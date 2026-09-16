@@ -1,0 +1,725 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Diff</title>
+  <script src="https://code.jquery.com/jquery.min.js"></script>
+  <script src="js/server_config.js?v=20260513-1"></script>
+  <script src="js/api.js?v=20260513-1"></script>
+  <style>
+    :root{--bg:#f2f5fb;--card:#fff;--line:#d7e2f3;--text:#1f2a37;--muted:#58657a;--red:#ffd8d8;--yellow:#fff2bf;--green:#d9f8dc}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:"Segoe UI","Noto Sans TC",sans-serif;background:var(--bg);color:var(--text)}
+    .top-nav{position:sticky;top:0;z-index:1000;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:12px 14px}
+    .home-banner{display:block;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:linear-gradient(135deg,#eef5ff,#f8fbff);color:var(--text);font-size:30px;text-decoration:none;font-weight:600}
+    .wrap{width:min(1200px,94%);margin:18px auto 24px}
+    .toolbar,.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+    .toolbar-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .path{font-family:ui-monospace,Consolas,monospace;color:#234}
+    .legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .tag{padding:5px 8px;border-radius:8px;border:1px solid var(--line);font-size:12px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .list-box{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;min-height:440px}
+    .list-head{padding:10px 12px;border-bottom:1px solid var(--line);font-weight:700;display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .head-actions{display:flex;gap:8px}
+    .items{padding:8px 10px}
+    .left-box .items{max-height:none;overflow:visible}
+    .right-box .items{max-height:none;min-height:420px;border:2px dashed #b8cae8;border-radius:10px;margin:10px 12px;background:#f8fbff}
+    .right-box.drag .items{border-color:#1d4ed8;background:#eaf2ff}
+    .drop-hint{height:100%;min-height:390px;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);padding:12px}
+    .item{padding:7px 9px;border-radius:8px;border:1px solid transparent;margin-bottom:6px;font-family:ui-monospace,Consolas,monospace;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .item-main{display:flex;align-items:center;gap:8px;min-width:0}
+    .diff-check{width:18px;height:18px;margin:0;flex:0 0 auto}
+    .file-chip{display:inline-block;padding:3px 6px;border-radius:6px;cursor:pointer}
+    .file-chip:hover{background:#eef5ff}
+    .meta{color:#58657a;font-family:"Segoe UI","Noto Sans TC",sans-serif;font-size:12px;white-space:nowrap}
+    .mark-remove{background:var(--red)} .mark-update{background:var(--yellow)} .mark-add{background:var(--green)} .muted{color:var(--muted)}
+    @media (max-width: 900px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="top-nav"><a class="home-banner" href="index.html">Diff</a></div>
+  <main class="wrap">
+    <section class="toolbar">
+      <div class="toolbar-row">
+        <button id="btnBack">回 Explorer</button>
+        <button id="btnReload">重新整理</button>
+        <button id="btnSelectAll">全選</button>
+        <button id="btnToggleChanged">只看異動：關</button>
+        <span class="muted">Current:</span>
+        <span id="basePath" class="path"></span>
+      </div>
+      <div class="legend">
+        <span class="tag" style="background:#ffd8d8">檔案移除(紅)</span>
+        <span class="tag" style="background:#fff2bf">檔案更新(黃)</span>
+        <span class="tag" style="background:#d9f8dc">檔案新增(綠)</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel list-box left-box">
+        <div class="list-head">
+          <span>當前資料夾檔案列表</span>
+          <span class="head-actions"><button id="btnDownload">下載</button></span>
+        </div>
+        <div id="leftItems" class="items"></div>
+      </article>
+      <article class="panel list-box right-box" id="rightPanel">
+        <div class="list-head">
+          <span>拖曳來源檔案列表</span>
+          <span class="head-actions"><button id="btnUpload">上傳</button></span>
+        </div>
+        <div id="rightItems" class="items"></div>
+      </article>
+    </section>
+  </main>
+  <script>
+    function isAbsDrivePath(path) {
+      return /^[A-Za-z]:\//.test(String(path || '').replace(/\\/g, '/'));
+    }
+    function splitPhysicalPath(path){
+      const raw = String(path || '').replace(/\\/g, '/').trim();
+      if (!raw) return null;
+      let p = raw;
+      if (/^\/[A-Za-z]:($|\/)/.test(p)) p = p.slice(1);
+      if (isAbsDrivePath(p)) {
+        const drive = p.slice(0, 2).toUpperCase();
+        const tail = p.slice(2).replace(/^\/+/, '');
+        const segs = tail.split('/').filter(Boolean);
+        return { kind: 'drive', root: `${drive}/`, segs };
+      }
+      if (p.startsWith('/')) {
+        const segs = p.slice(1).split('/').filter(Boolean);
+        return { kind: 'unix', root: '/', segs };
+      }
+      return null;
+    }
+    function joinPhysicalPath(kind, root, segs){
+      if (kind === 'drive') return segs.length ? `${root}${segs.join('/')}` : root;
+      return segs.length ? `/${segs.join('/')}` : '/';
+    }
+    function formatApiPath(info){
+      if (!info) return '';
+      const joined = joinPhysicalPath(info.kind, info.root, info.segs);
+      return info.kind === 'drive' ? `/${joined}` : joined;
+    }
+    function normalizePhysicalPath(path){
+      let raw = String(path ?? '').replace(/\\/g, '/').trim();
+      if (raw === '') return '';
+      if (isAbsDrivePath(raw)) raw = '/' + raw;
+      const info = splitPhysicalPath(raw);
+      if (!info) return '';
+      return formatApiPath(info);
+    }
+    function joinPhysical(base, rel){
+      const absRel = normalizePhysicalPath(rel);
+      if (absRel) return absRel;
+      const info = splitPhysicalPath(base);
+      if (!info) return '';
+      const out = [...info.segs];
+      for (const part of String(rel || '').replace(/\\/g, '/').split('/')) {
+        if (!part || part === '.') continue;
+        if (part === '..') {
+          if (out.length > 0) out.pop();
+          continue;
+        }
+        out.push(part);
+      }
+      return formatApiPath({ kind: info.kind, root: info.root, segs: out });
+    }
+    const qs = new URLSearchParams(location.search);
+    let basePath = normalizePhysicalPath(decodeURIComponent(qs.get('base') || ''));
+    const restore = String(qs.get('restore') || '') === '1';
+    const fresh = String(qs.get('fresh') || '') === '1';
+
+    let apiList = '';
+    let apiUpload = '';
+    let apiDelete = '';
+    let rootApi = '';
+
+    function applyApiEndpoints() {
+      apiList = ManagerApi.url('scan_all_file');
+      apiUpload = ManagerApi.url('upload_files');
+      apiDelete = ManagerApi.url('delete_file');
+      rootApi = ManagerApi.url('get_root');
+    }
+
+    async function refreshApiEndpoints() {
+      await ManagerApi.ready({ reload: true });
+      applyApiEndpoints();
+    }
+
+    function pageUrl(page, params = {}) {
+      const nqs = new URLSearchParams(location.search);
+      Object.entries(params).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') nqs.delete(key);
+        else nqs.set(key, String(value));
+      });
+      const query = nqs.toString();
+      return `${page}${query ? `?${query}` : ''}`;
+    }
+
+    let leftFiles = [];
+    let rightFiles = [];
+    let showChangedOnly = false;
+    const selectedDiffPaths = new Set();
+    const APP_SCOPE = location.pathname.replace(/\/[^\/]*$/, '').replace(/[^A-Za-z0-9_-]+/g, '_') || 'manager';
+    const DIFF_STATE_COOKIE = `${APP_SCOPE}_diff_state_v1`;
+
+    const normalizeRel = (p) => {
+      const s = String(p || '')
+        .replace(/\\/g, '/')
+        .replace(/^\/+/, '')
+        .replace(/^\.\/+/, '')
+        .replace(/\/+/g, '/')
+        .replace(/\/+$/, '');
+      if (s === '.' || s === './') return '';
+      return s;
+    };
+    const fmtTime = (ts) => ts ? new Date(ts).toLocaleString() : '';
+    const relDir = (path) => {
+      const p = normalizeRel(path);
+      const i = p.lastIndexOf('/');
+      return i >= 0 ? p.slice(0, i) : '';
+    };
+    const relBase = (path) => {
+      const p = normalizeRel(path);
+      const i = p.lastIndexOf('/');
+      return i >= 0 ? p.slice(i + 1) : p;
+    };
+    function baseName(path) {
+      const info = splitPhysicalPath(path);
+      if (!info || info.segs.length === 0) return '';
+      return info.segs[info.segs.length - 1];
+    }
+    function stripDraggedRootPrefix(rows) {
+      if (rows.length === 0) return rows;
+      const seg0 = (p) => normalizeRel(p).split('/').filter(Boolean)[0] || '';
+      const first = seg0(rows[0].path);
+      if (!first) return rows;
+      const allSameTop = rows.every(r => seg0(r.path) === first);
+      if (!allSameTop) return rows;
+      const prefix = `${first}/`;
+      return rows
+        .map((r) => {
+          const p = normalizeRel(r.path);
+          if (p === first) return { ...r, path: '' };
+          if (!p.startsWith(prefix)) return { ...r, path: p };
+          return { ...r, path: normalizeRel(p.slice(prefix.length)) };
+        })
+        .filter(r => r.path);
+    }
+    function setCookie(name, value, days = 1){
+      const d = new Date();
+      d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+      document.cookie = `${name}=${encodeURIComponent(value)}; expires=${d.toUTCString()}; path=/; SameSite=Lax`;
+    }
+    function getCookie(name){
+      const key = `${name}=`;
+      const arr = document.cookie.split(';');
+      for (const raw of arr){
+        const c = raw.trim();
+        if (c.startsWith(key)) return decodeURIComponent(c.substring(key.length));
+      }
+      return '';
+    }
+    function saveDiffState(){
+      // cookie only stores metadata; file objects remain only in-memory
+      const payload = {
+        base: basePath,
+        right: rightFiles.map(r => ({ path: r.path, mtimeMs: r.mtimeMs, hash: String(r.hash || '') }))
+      };
+      const txt = JSON.stringify(payload);
+      if (txt.length <= 3500) setCookie(DIFF_STATE_COOKIE, txt, 1);
+    }
+    function clearDiffState(){
+      document.cookie = `${DIFF_STATE_COOKIE}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+    }
+    function loadDiffState(){
+      const txt = getCookie(DIFF_STATE_COOKIE);
+      if (!txt) return;
+      try{
+        const data = JSON.parse(txt);
+        if (data?.base !== basePath || !Array.isArray(data?.right)) return;
+        rightFiles = data.right
+          .filter(x => x && typeof x.path === 'string')
+          .map(x => ({ path: normalizeRel(x.path), mtimeMs: Number(x.mtimeMs || 0), hash: String(x.hash || '') }));
+      }catch(_){}
+    }
+    function openPreviewFromDiff(targetPath){
+      location.href = pageUrl('preview.html', {
+        path: normalizePhysicalPath(targetPath),
+        from: 'diff'
+      });
+    }
+    function openPreviewBlob(fileObj){
+      const blobUrl = URL.createObjectURL(fileObj);
+      const name = fileObj?.name || 'local-file';
+      location.href = pageUrl('preview.html', {
+        blob: blobUrl,
+        name,
+        from: 'diff',
+        base: basePath,
+        restore: '1'
+      });
+    }
+
+    async function fileSha256(file) {
+      const buf = await file.arrayBuffer();
+      const digest = await crypto.subtle.digest('SHA-256', buf);
+      const bytes = new Uint8Array(digest);
+      let out = '';
+      for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
+      return out;
+    }
+    function isSameByHash(left, right) {
+      const lh = String(left?.hash || '');
+      const rh = String(right?.hash || '');
+      if (!lh || !rh) return false;
+      return lh === rh;
+    }
+
+    function classify(path) {
+      const l = leftFiles.find(x => x.path === path);
+      const r = rightFiles.find(x => x.path === path);
+      if (l && !r) return { left: 'mark-remove', right: '' };
+      if (!l && r) return { left: '', right: 'mark-add' };
+      if (!l || !r) return { left: '', right: '' };
+      if (isSameByHash(l, r)) return { left: '', right: '' };
+      const diff = l.mtimeMs - r.mtimeMs;
+      return diff > 0 ? { left: 'mark-update', right: '' } : { left: '', right: 'mark-update' };
+    }
+
+    function diffState(path) {
+      const l = leftFiles.find(x => x.path === path);
+      const r = rightFiles.find(x => x.path === path);
+      if (l && !r) return 'remove';
+      if (!l && r) return 'add';
+      if (!l || !r) return 'same';
+      if (isSameByHash(l, r)) return 'same';
+      const diff = l.mtimeMs - r.mtimeMs;
+      return diff > 0 ? 'left_newer' : 'right_newer';
+    }
+
+    function getDiffRows() {
+      const union = new Set([...leftFiles.map(x => x.path), ...rightFiles.map(x => x.path)]);
+      return [...union].sort((a,b) => a.localeCompare(b)).map((p) => ({
+        path: p,
+        left: leftFiles.find(x => x.path === p) || null,
+        right: rightFiles.find(x => x.path === p) || null,
+        state: diffState(p),
+      }));
+    }
+    function getVisibleRows() {
+      const rows = getDiffRows();
+      if (!showChangedOnly) return rows;
+      return rows.filter(r => r.state !== 'same');
+    }
+
+    function visibleDiffPaths() {
+      return getVisibleRows().map(r => r.path);
+    }
+
+    function updateSelectAllButton() {
+      const paths = visibleDiffPaths();
+      const allSelected = paths.length > 0 && paths.every(p => selectedDiffPaths.has(p));
+      $('#btnSelectAll').text(allSelected ? '清除' : '全選');
+    }
+
+    function syncRowChecks(path, checked) {
+      $(`.diff-check[data-rel="${encodeURIComponent(path)}"]`).prop('checked', checked);
+    }
+
+    function itemHtml(row, side, className) {
+      const rel = side === 'left' ? row.left.path : row.right.path;
+      const meta = side === 'left' ? row.left.mtimeMs : row.right.mtimeMs;
+      const linkClass = side === 'left' ? 'pv-link-left' : 'pv-link-right';
+      const enc = encodeURIComponent(rel);
+      const checked = selectedDiffPaths.has(rel) ? ' checked' : '';
+      return `<div class="item ${className}">
+        <span class="item-main">
+          <input class="diff-check" type="checkbox" data-rel="${enc}"${checked}>
+          <span class="file-chip ${linkClass}" data-rel="${enc}">${rel}</span>
+        </span>
+        <span class="meta">${fmtTime(meta)}</span>
+      </div>`;
+    }
+
+    function render() {
+      const leftDom = $('#leftItems');
+      const rightDom = $('#rightItems');
+      leftDom.empty();
+      rightDom.empty();
+
+      if (rightFiles.length === 0) {
+        const rows = getVisibleRows();
+        rows.forEach((row) => {
+          if (row.left) leftDom.append(itemHtml(row, 'left', 'mark-remove'));
+        });
+        rightDom.append('<div class="drop-hint">把檔案/資料夾拖到這個區塊（只讀取資訊，不上傳）</div>');
+        updateSelectAllButton();
+        return;
+      }
+
+      const rows = getVisibleRows();
+      rows.forEach((row) => {
+        const c = classify(row.path);
+        if (row.left) leftDom.append(itemHtml(row, 'left', c.left));
+        if (row.right) rightDom.append(itemHtml(row, 'right', c.right));
+      });
+      updateSelectAllButton();
+    }
+
+    async function loadLeft() {
+      await refreshApiEndpoints();
+      $('#basePath').text(basePath);
+      const text = await $.post(apiList, { path: basePath });
+      const rows = Array.isArray(text) ? text : JSON.parse(text || '[]');
+      leftFiles = rows
+        .map(r => ({ path: normalizeRel(r.path), mtimeMs: Math.floor(Number(r.mtime || 0)) * 1000, hash: String(r.hash || '') }))
+        .filter(r => r.path)
+        .sort((a,b)=>a.path.localeCompare(b.path));
+      render();
+    }
+
+    async function readAllDirectoryEntries(reader) {
+      let out = [];
+      while (true) {
+        const batch = await new Promise((resolve) => reader.readEntries(resolve));
+        if (!batch || batch.length === 0) break;
+        out = out.concat(batch);
+      }
+      return out;
+    }
+
+    async function collectFromEntry(entry, prefix = '') {
+      let out = [];
+      if (entry.isFile) {
+        const file = await new Promise((resolve) => entry.file(resolve));
+        out.push({
+          path: normalizeRel(prefix ? `${prefix}/${file.name}` : file.name),
+          mtimeMs: Math.floor(Number(file.lastModified || 0) / 1000) * 1000,
+          hash: await fileSha256(file),
+          file
+        });
+        return out;
+      }
+      if (entry.isDirectory) {
+        const next = prefix ? `${prefix}/${entry.name}` : entry.name;
+        const reader = entry.createReader();
+        const children = await readAllDirectoryEntries(reader);
+        for (const c of children) out = out.concat(await collectFromEntry(c, next));
+      }
+      return out;
+    }
+
+    async function collectDropped(dataTransfer) {
+      const items = dataTransfer?.items || [];
+      let rows = [];
+      const entries = [];
+      for (let i = 0; i < items.length; i++) {
+        const e = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+        if (e) entries.push(e);
+      }
+      if (entries.length) {
+        for (const e of entries) rows = rows.concat(await collectFromEntry(e, ''));
+      } else {
+        const files = Array.from(dataTransfer?.files || []);
+        rows = await Promise.all(files.map(async (f) => ({
+          path: normalizeRel(f.name),
+          mtimeMs: Math.floor(Number(f.lastModified || 0) / 1000) * 1000,
+          hash: await fileSha256(f),
+          file: f
+        })));
+      }
+      const dedup = new Map();
+      rows.forEach(r => dedup.set(r.path, r));
+      return [...dedup.values()].sort((a,b)=>a.path.localeCompare(b.path));
+    }
+
+    async function handleDropEvent(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      $('#rightPanel').removeClass('drag');
+      rightFiles = stripDraggedRootPrefix(await collectDropped(e.originalEvent.dataTransfer));
+      selectedDiffPaths.clear();
+      getDiffRows().forEach(r => selectedDiffPaths.add(r.path));
+      saveDiffState();
+      render();
+    }
+
+    function initDrop() {
+      const panel = $('#rightPanel');
+      panel.on('dragover', (e) => { e.preventDefault(); panel.addClass('drag'); });
+      panel.on('dragleave', (e) => { e.preventDefault(); panel.removeClass('drag'); });
+      panel.on('drop', handleDropEvent);
+    }
+
+    async function postText(url, data) {
+      const fd = new FormData();
+      Object.entries(data || {}).forEach(([k, v]) => fd.append(k, String(v)));
+      const res = await fetch(url, { method: 'POST', body: fd });
+      const txt = await res.text();
+      if (!res.ok) throw new Error(txt || `${res.status} ${res.statusText}`);
+      return txt;
+    }
+
+    function errorText(err) {
+      return String(err?.responseText || err?.statusText || err?.message || err || '');
+    }
+
+    function logError(label, err) {
+      console.error(label, err);
+      const text = errorText(err);
+      if (text) console.error(`${label} detail:\n${text}`);
+    }
+
+    function userMessage(kind, err) {
+      const text = errorText(err);
+      if (/缺少可上傳的來源檔案內容/.test(text)) return '來源檔案內容已失效，請重新拖曳來源後再上傳';
+      if (/請先/.test(text) || /沒有可/.test(text) || /勾選項目/.test(text)) return text;
+      if (kind === 'upload') return '上傳失敗，詳細原因請看 console';
+      if (kind === 'download') return '下載失敗，詳細原因請看 console';
+      if (kind === 'load') return '讀取失敗，詳細原因請看 console';
+      return '操作失敗，詳細原因請看 console';
+    }
+
+    async function runUploadApply() {
+      await refreshApiEndpoints();
+      if (rightFiles.length === 0) {
+        alert('請先拖曳來源檔案');
+        return;
+      }
+      const rows = getDiffRows();
+      const selectedRows = rows.filter(r => selectedDiffPaths.has(r.path));
+      if (selectedRows.length === 0) {
+        alert('請先勾選要套用的差異項目');
+        return;
+      }
+      const toUpload = selectedRows.filter(r => r.right?.file && r.state !== 'same');
+      const toDelete = selectedRows.filter(r => r.state === 'remove' && !r.right);
+      if (toUpload.length === 0 && toDelete.length === 0) {
+        alert('勾選項目沒有可上傳、覆蓋或刪除的差異');
+        return;
+      }
+      const missingSource = toUpload.filter(r => !r.right?.file);
+      if (missingSource.length > 0) {
+        throw new Error('缺少可上傳的來源檔案內容，請重新拖曳來源後再上傳');
+      }
+
+      const uploadRows = [];
+      for (const r of toUpload) {
+        if (!r.right?.file) continue;
+        const rel = normalizeRel(r.path);
+        if (!rel) continue;
+        const dir = relDir(rel);
+        const targetDir = dir ? joinPhysical(basePath, dir) : basePath;
+        uploadRows.push({
+          rel,
+          file: r.right.file,
+          name: relBase(rel),
+          dir: targetDir,
+          mtimeMs: String(r.right.mtimeMs || 0)
+        });
+      }
+
+      let uploadCount = 0;
+      const uploadBatchSize = 10;
+      for (let i = 0; i < uploadRows.length; i += uploadBatchSize) {
+        const batch = uploadRows.slice(i, i + uploadBatchSize);
+        const fd = new FormData();
+        batch.forEach((row) => {
+          fd.append('files[]', row.file, row.name);
+          fd.append('dirs[]', row.dir);
+          fd.append('mtimes[]', row.mtimeMs);
+        });
+        const res = await fetch(apiUpload, { method: 'POST', body: fd });
+        const text = await res.text();
+        const batchLabel = `batch ${Math.floor(i / uploadBatchSize) + 1}, files ${i + 1}-${i + batch.length}`;
+        if (!res.ok) {
+          throw new Error(`${batchLabel} failed (${res.status} ${res.statusText})\n${text || 'upload failed'}`);
+        }
+        let payload = {};
+        try {
+          payload = JSON.parse(text || '{}');
+        } catch (_) {
+          throw new Error(`${batchLabel} returned non-json response\n${text || '(empty response)'}`);
+        }
+        const saved = Number(payload.saved || 0);
+        if (Array.isArray(payload.details)) {
+          console.info('diff upload mtime details', payload.details);
+          const badMtimes = payload.details.filter((d) => {
+            const requested = Number(d.requested_mtime || 0);
+            const actual = Number(d.actual_mtime || 0);
+            return requested > 0 && Math.abs(requested - actual) > 2;
+          });
+          if (badMtimes.length > 0) {
+            throw new Error(`${batchLabel} mtime mismatch\n` + badMtimes.map((d) =>
+              `${d.path}: requested=${d.requested_mtime}, actual=${d.actual_mtime}, tmp_touch_ok=${d.tmp_touch_ok}, touch_ok=${d.touch_ok}`
+            ).join('\n'));
+          }
+        }
+        if (saved < batch.length) {
+          const msg = Array.isArray(payload.errors) && payload.errors.length
+            ? payload.errors.map((e) => {
+                const row = batch[Number(e.index || 0)] || {};
+                const parts = [
+                  `${e.name || row.name || '#'+e.index}: ${e.error || 'unknown error'}`,
+                  `rel=${row.rel || ''}`,
+                  `dir=${e.target_dir || row.dir || ''}`,
+                  `target=${e.target_file || ''}`
+                ];
+                if ('tmp_exists' in e) parts.push(`tmp_exists=${e.tmp_exists}`);
+                if ('dir_writable' in e) parts.push(`dir_writable=${e.dir_writable}`);
+                if ('target_exists' in e) parts.push(`target_exists=${e.target_exists}`);
+                if ('target_writable' in e) parts.push(`target_writable=${e.target_writable}`);
+                return parts.filter(Boolean).join('\n  ');
+              }).join('\n')
+            : `部分檔案未上傳成功\nraw=${text}`;
+          throw new Error(`${batchLabel} partially failed: saved ${saved}/${batch.length}\n${msg}`);
+        }
+        uploadCount += saved;
+      }
+
+      const deleteWarnings = [];
+      for (const r of toDelete) {
+        const rel = normalizeRel(r.path);
+        if (!rel) continue;
+        try {
+          await postText(apiDelete, { path: joinPhysical(basePath, rel) });
+        } catch (e) {
+          const msg = String(e?.message || e || '');
+          if (msg.includes('is not a file') || msg.includes('404') || msg.includes('skip [')) continue;
+          deleteWarnings.push(`delete failed: ${rel}\n${msg}`);
+        }
+      }
+
+      await loadLeft();
+      saveDiffState();
+      if (deleteWarnings.length > 0) {
+        console.warn('diff delete warnings', deleteWarnings);
+      }
+      const deleteOkCount = Math.max(0, toDelete.length - deleteWarnings.length);
+      const warnText = deleteWarnings.length > 0 ? `，刪除失敗 ${deleteWarnings.length} 筆（已略過，詳見 console）` : '';
+      alert(`套用完成：上傳/覆蓋 ${uploadCount} 筆，刪除 ${deleteOkCount} 筆${warnText}`);
+    }
+
+    async function runDownloadExport() {
+      await loadLeft();
+      const rows = getDiffRows();
+      const selectedRows = rows.filter(r => selectedDiffPaths.has(r.path));
+      if (selectedRows.length === 0) {
+        alert('請先勾選要下載的差異項目');
+        return;
+      }
+      const files = selectedRows
+        .filter(r => r.state === 'left_newer' || r.state === 'remove')
+        .map(r => normalizeRel(r.path))
+        .filter(Boolean);
+      if (files.length === 0) {
+        alert('沒有可下載的差異檔案');
+        return;
+      }
+      api('download_files', {
+        base: basePath,
+        file_paths: JSON.stringify(files)
+      });
+    }
+
+    $('#btnBack').on('click', () => { location.href = pageUrl('explorer.html', { path: basePath }); });
+    $('#btnReload').on('click', () => {
+      rightFiles = [];
+      selectedDiffPaths.clear();
+      clearDiffState();
+      loadLeft().catch(err => {
+        logError('diff reload failed', err);
+        alert(userMessage('load', err));
+      });
+    });
+    $('#btnSelectAll').on('click', () => {
+      const paths = visibleDiffPaths();
+      const allSelected = paths.length > 0 && paths.every(p => selectedDiffPaths.has(p));
+      if (allSelected) {
+        paths.forEach(p => selectedDiffPaths.delete(p));
+      } else {
+        paths.forEach(p => selectedDiffPaths.add(p));
+      }
+      render();
+    });
+    $('#btnToggleChanged').on('click', () => {
+      showChangedOnly = !showChangedOnly;
+      $('#btnToggleChanged').text(`只看異動：${showChangedOnly ? '開' : '關'}`);
+      updateSelectAllButton();
+      render();
+    });
+    $('#btnUpload').on('click', () => runUploadApply().catch(err => {
+      logError('diff upload failed', err);
+      alert(userMessage('upload', err));
+    }));
+    $('#btnDownload').on('click', () => {
+      runDownloadExport().catch(err => {
+        logError('diff download failed', err);
+        alert(userMessage('download', err));
+      });
+    });
+    $('#leftItems').on('click', '.pv-link-left', (e) => {
+      e.preventDefault();
+      const rel = decodeURIComponent(String($(e.currentTarget).attr('data-rel') || ''));
+      const sub = normalizeRel(rel);
+      const target = sub ? joinPhysical(basePath, sub) : basePath;
+      openPreviewFromDiff(target);
+    });
+    $('#rightItems').on('click', '.pv-link-right', (e) => {
+      e.preventDefault();
+      const rel = decodeURIComponent(String($(e.currentTarget).attr('data-rel') || ''));
+      const item = rightFiles.find(x => x.path === rel);
+      if (item?.file) {
+        openPreviewBlob(item.file);
+        return;
+      }
+      const sub = normalizeRel(rel);
+      const target = sub ? joinPhysical(basePath, sub) : basePath;
+      openPreviewFromDiff(target);
+    });
+    $('.grid').on('change', '.diff-check', (e) => {
+      const rel = decodeURIComponent(String($(e.currentTarget).attr('data-rel') || ''));
+      const checked = $(e.currentTarget).prop('checked');
+      if (checked) selectedDiffPaths.add(rel);
+      else selectedDiffPaths.delete(rel);
+      syncRowChecks(rel, checked);
+      updateSelectAllButton();
+    });
+
+    async function boot() {
+      await refreshApiEndpoints();
+      if (!basePath) {
+        try {
+          basePath = normalizePhysicalPath(await $.post(rootApi, {}));
+          const nqs = new URLSearchParams(location.search);
+          nqs.set('base', basePath);
+          const next = location.pathname + '?' + nqs.toString();
+          history.replaceState(null, '', next);
+        } catch (_) {}
+      }
+      initDrop();
+      if (fresh) {
+        clearDiffState();
+        const nqs = new URLSearchParams(location.search);
+        nqs.delete('fresh');
+        const next = location.pathname + (nqs.toString() ? ('?' + nqs.toString()) : '');
+        history.replaceState(null, '', next);
+      }
+      if (restore || !fresh) loadDiffState();
+      loadLeft().catch(err => {
+        logError('diff initial load failed', err);
+        $('#leftItems').html('<div class="muted">讀取失敗，詳細原因請看 console</div>');
+      });
+    }
+    boot();
+  </script>
+</body>
+</html>

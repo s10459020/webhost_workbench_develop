@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Preview</title>
+  <script src="https://code.jquery.com/jquery.min.js"></script>
+  <script src="js/server_config.js?v=20260513-1"></script>
+  <script src="js/api.js?v=20260513-1"></script>
+  <script src="js/preview/markdown_preview.js"></script>
+  <style>
+    :root{--bg:#f2f5fb;--card:#fff;--line:#d7e2f3;--text:#1f2a37;--muted:#58657a}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:"Segoe UI","Noto Sans TC",sans-serif;background:var(--bg);color:var(--text)}
+    .top-nav{position:sticky;top:0;z-index:1000;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:12px 14px}
+    .home-banner{display:block;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:linear-gradient(135deg,#eef5ff,#f8fbff);color:var(--text);font-size:30px;text-decoration:none;font-weight:600}
+    .wrap{width:min(1200px,94%);margin:18px auto 24px}
+    .toolbar,.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+    .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .path{font-family:ui-monospace,Consolas,monospace;color:#234;word-break:break-all}
+    .path-input{flex:1;min-width:280px;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-family:ui-monospace,Consolas,monospace}
+    #frame{width:100%;height:72vh;border:1px solid var(--line);border-radius:10px;background:#fff}
+    .muted{color:var(--muted)}
+    button{border:1px solid #c8d4ea;background:#fff;border-radius:9px;padding:7px 11px;cursor:pointer}
+  </style>
+</head>
+<body>
+  <div class="top-nav"><a class="home-banner" href="index.html">Preview</a></div>
+  <main class="wrap">
+    <section class="toolbar">
+      <button id="btnBack">返回</button>
+      <button id="btnDownload">下載</button>
+      <span class="muted">實體:</span>
+      <input id="pathInput" class="path-input" type="text">
+    </section>
+    <section class="panel">
+      <iframe id="frame"></iframe>
+    </section>
+  </main>
+  <script>
+    const q = new URLSearchParams(location.search);
+    const rawPath = decodeURIComponent(q.get('path') || '');
+    const blob = decodeURIComponent(q.get('blob') || '');
+    const name = decodeURIComponent(q.get('name') || '');
+    const from = String(q.get('from') || '');
+
+    let workspaceRootAbs = '';
+    let path = String(rawPath || '');
+    let currentBlob = String(blob || '');
+    let currentName = String(name || '');
+    const API = {
+      get_root: 'get_root',
+      read_file: 'read_file',
+      preview_file: 'preview_file',
+      download_file: 'download_file'
+    };
+    const APP_SCOPE = location.pathname.replace(/\/[^\/]*$/, '').replace(/[^A-Za-z0-9_-]+/g, '_') || 'manager';
+    const EXPLORER_PATH_COOKIE = `${APP_SCOPE}_explorer_path_v1`;
+
+    function apiUrl(key) {
+      return ManagerApi.url(API[key]);
+    }
+
+    function apiPost(key, data = {}) {
+      return $.post(apiUrl(key), data);
+    }
+    function isAbsDrivePath(p){
+      return /^[A-Za-z]:\//.test(String(p || '').replace(/\\/g, '/'));
+    }
+    function splitPhysicalPath(path){
+      const raw = String(path || '').replace(/\\/g, '/').trim();
+      if (!raw) return null;
+      let p = raw;
+      if (/^\/[A-Za-z]:($|\/)/.test(p)) p = p.slice(1);
+      if (isAbsDrivePath(p)) {
+        const drive = p.slice(0, 2).toUpperCase();
+        const tail = p.slice(2).replace(/^\/+/, '');
+        const segs = tail.split('/').filter(Boolean);
+        return { kind: 'drive', root: `${drive}/`, segs };
+      }
+      if (p.startsWith('/')) {
+        const segs = p.slice(1).split('/').filter(Boolean);
+        return { kind: 'unix', root: '/', segs };
+      }
+      return null;
+    }
+    function joinPhysicalPath(kind, root, segs){
+      if (kind === 'drive') return segs.length ? `${root}${segs.join('/')}` : root;
+      return segs.length ? `/${segs.join('/')}` : '/';
+    }
+    function formatApiPath(info){
+      if (!info) return '';
+      const joined = joinPhysicalPath(info.kind, info.root, info.segs);
+      return info.kind === 'drive' ? `/${joined}` : joined;
+    }
+    function normalizePhysicalPath(p){
+      let raw = String(p || '').replace(/\\/g, '/').trim();
+      if (!raw) return '';
+      if (isAbsDrivePath(raw)) raw = '/' + raw;
+      const info = splitPhysicalPath(raw);
+      if (!info) return '';
+      return formatApiPath(info);
+    }
+    function parentDir(p){
+      const info = splitPhysicalPath(p);
+      if (!info) return '';
+      if (info.segs.length > 0) info.segs.pop();
+      return formatApiPath(info);
+    }
+    function updateLocationQuery(){
+      const nq = new URLSearchParams(location.search);
+      if (path) nq.set('path', path);
+      if (from) nq.set('from', from);
+      const next = location.pathname + '?' + nq.toString();
+      history.replaceState(null, '', next);
+    }
+    function pageUrl(page, params = {}) {
+      const nq = new URLSearchParams(location.search);
+      Object.entries(params).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') nq.delete(key);
+        else nq.set(key, String(value));
+      });
+      const query = nq.toString();
+      return `${page}${query ? `?${query}` : ''}`;
+    }
+    function updatePathLabel(){
+      $('#pathInput').val(path);
+    }
+    function getCookie(name){
+      const key = `${name}=`;
+      const arr = document.cookie.split(';');
+      for (const raw of arr){
+        const c = raw.trim();
+        if (c.startsWith(key)) return decodeURIComponent(c.substring(key.length));
+      }
+      return '';
+    }
+    function explorerReturnPath(){
+      const saved = normalizePhysicalPath(String(getCookie(EXPLORER_PATH_COOKIE) || '').trim());
+      if (saved) return saved;
+      return normalizePhysicalPath(parentDir(path)) || normalizePhysicalPath(workspaceRootAbs);
+    }
+    $('#btnBack').on('click', () => {
+      if (from === 'explorer') {
+        location.href = pageUrl('explorer.html', { path: explorerReturnPath() });
+        return;
+      }
+      if (window.history.length > 1) {
+        history.back();
+        return;
+      }
+      const fallback = normalizePhysicalPath(parentDir(path)) || normalizePhysicalPath(workspaceRootAbs);
+      location.href = pageUrl('explorer.html', { path: fallback });
+    });
+    $('#btnDownload').on('click', () => {
+      if (currentBlob) {
+        const link = document.createElement('a');
+        link.href = currentBlob;
+        link.download = currentName || 'download';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        return;
+      }
+      const p = normalizePhysicalPath(path);
+      if (!p) {
+        alert('沒有可下載的檔案路徑');
+        return;
+      }
+      api('download_file', { path: p });
+    });
+    function openPath() {
+      const p = normalizePhysicalPath(String($('#pathInput').val() || '').trim() || '');
+      if (!p) {
+        alert('請輸入實體絕對路徑');
+        return;
+      }
+      path = p;
+      currentBlob = '';
+      currentName = '';
+      updateLocationQuery();
+      updatePathLabel();
+      render();
+    }
+    $('#pathInput').on('keydown', (e) => {
+      if (e.key === 'Enter') openPath();
+    });
+
+    function escapeHtml(text){
+      return String(text)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function render(){
+      const frame = $('#frame')[0];
+      const previewUrl = currentBlob || `${apiUrl('preview_file')}?path=${encodeURIComponent(path)}`;
+      const targetName = (currentName || path || '').toLowerCase();
+      const loadText = () => currentBlob
+        ? fetch(previewUrl).then((r) => r.text())
+        : apiPost('read_file', { path }).then((x) => x);
+      const renderText = (res) => {
+        frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><style>
+          *{box-sizing:border-box}
+          body{font-family:ui-monospace,Consolas,monospace;line-height:1.5;color:#1f2a37;padding:14px;margin:0;background:#fff}
+          pre{margin:0;white-space:pre-wrap;word-break:break-word}
+        </style></head><body><pre>${escapeHtml(res ?? '')}</pre></body></html>`;
+      };
+      if (/\.md$/i.test(targetName)) {
+        Promise.resolve(loadText())
+          .then((res) => {
+            const html = window.MarkdownPreview
+              ? window.MarkdownPreview.renderToHtml(res ?? '')
+              : `<pre>${escapeHtml(res ?? '')}</pre>`;
+            frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><style>
+              *{box-sizing:border-box}
+              body{font-family:Segoe UI,Noto Sans TC,sans-serif;line-height:1.6;color:#1f2a37;padding:14px;margin:0}
+              h1,h2,h3,h4,h5,h6{margin:0 0 10px;line-height:1.35}
+              p{margin:0 0 10px}
+              ul{margin:0 0 10px 0;padding-left:1.1em}
+              li{margin:2px 0 0}
+              pre{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;overflow:auto}
+              pre{margin:0 0 10px}
+              code{background:#f1f5f9;border-radius:6px;padding:1px 5px}
+              a{color:#1d4ed8}
+            </style></head><body>${html}</body></html>`;
+          })
+          .catch((xhr) => {
+            frame.srcdoc = `<pre style="color:#b91c1c;padding:12px">read failed: ${escapeHtml(xhr?.responseText || xhr?.statusText || xhr?.message || '')}</pre>`;
+          });
+        return;
+      }
+      if (/\.(gif|png|jpe?g|webp|bmp|svg|ico)$/i.test(targetName)) {
+        frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><style>
+          html,body{margin:0;height:100%;background:#f8fafc}
+          .wrap{height:100%;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box}
+          img{max-width:100%;max-height:100%;object-fit:contain;border:1px solid #e2e8f0;border-radius:8px;background:#fff}
+        </style></head><body><div class="wrap"><img src="${previewUrl}" alt="preview"></div></body></html>`;
+        return;
+      }
+      if (/\.(mov|mp4|webm|ogg)$/i.test(targetName)) {
+        frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><style>
+          html,body{margin:0;height:100%;background:#f8fafc}
+          .wrap{height:100%;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box}
+          video{max-width:100%;max-height:100%;background:#000;border:1px solid #e2e8f0;border-radius:8px}
+        </style></head><body><div class="wrap"><video controls preload="metadata" src="${previewUrl}"></video></div></body></html>`;
+        return;
+      }
+      if (/\.pdf$/i.test(targetName)) {
+        frame.srcdoc = '';
+        frame.src = previewUrl;
+        return;
+      }
+      Promise.resolve(loadText())
+        .then((res) => renderText(res))
+        .catch((xhr) => {
+          frame.srcdoc = `<pre style="color:#b91c1c;padding:12px">read failed: ${escapeHtml(xhr?.responseText || xhr?.statusText || xhr?.message || '')}</pre>`;
+        });
+    }
+
+    async function boot() {
+      await ManagerApi.ready();
+      
+      try {
+        workspaceRootAbs = normalizePhysicalPath(String(await apiPost('get_root', {})));
+      } catch (_) {
+        workspaceRootAbs = '';
+      }
+      path = normalizePhysicalPath(path) || workspaceRootAbs;
+      updatePathLabel();
+      render();
+    }
+    boot();
+  </script>
+</body>
+</html>

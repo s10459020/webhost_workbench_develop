@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Command</title>
+  <script src="js/server_config.js?v=20260514-4"></script>
+  <script src="js/api.js?v=20260514-4"></script>
+  <style>
+    :root{--bg:#eef2f7;--card:#fff;--line:#d7dde8;--text:#1e293b;--muted:#64748b}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:"Segoe UI","Noto Sans TC",sans-serif;background:var(--bg);color:var(--text)}
+    .top-nav{position:sticky;top:0;z-index:999;background:#fff;border-bottom:1px solid var(--line);padding:10px 14px}
+    .home-banner{display:block;padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:#f8fafc;color:var(--text);font-size:20px;text-decoration:none;font-weight:600}
+    .wrap{width:min(1200px,94%);margin:16px auto}
+    .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    input,textarea,button{font:inherit}
+    textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:8px;padding:8px}
+    button{border:1px solid #c8d4ea;background:#fff;border-radius:8px;padding:7px 10px;cursor:pointer}
+    pre{white-space:pre-wrap;background:#0b1220;color:#d6e2ff;border-radius:8px;padding:12px;min-height:220px;overflow:auto}
+    .muted{color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="top-nav"><a class="home-banner" href="index.html">Command</a></div>
+  <main class="wrap">
+    <section class="panel">
+      <div class="row">
+        <strong>Runtime OS:</strong><span id="osText" class="muted">讀取中...</span>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="row">
+        <button id="btnPwd" type="button">目前路徑</button>
+        <button id="btnList" type="button">列目錄</button>
+        <button id="btnPhpVer" type="button">PHP 版本</button>
+        <button id="btnToolList" type="button">tools 列表</button>
+      </div>
+      <p class="muted">以下命令可編輯後執行（透過 `cmd_exec` API）</p>
+      <textarea id="cmd"></textarea>
+      <div class="row">
+        <button id="btnRun" type="button">執行</button>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="row"><strong>輸出</strong><span id="exitCode" class="muted"></span></div>
+      <pre id="out"></pre>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    async function runtimeOs() {
+      const os = await ManagerApi.osFamily();
+      return String(os || '').toLowerCase();
+    }
+    async function pick(map) {
+      const os = await runtimeOs();
+      return (os.includes('windows') ? map.windows : map.linux) || map.default || '';
+    }
+    async function setDefaultCommand(type) {
+      const cmd = await pick(type);
+      $('cmd').value = cmd;
+    }
+    async function runCommand() {
+      const command = $('cmd').value.trim();
+      if (!command) return;
+      try {
+        const raw = await ManagerApi.post('cmd_exec', { command });
+        const data = JSON.parse(raw || '{}');
+        $('exitCode').textContent = `exit=${data.exit_code ?? ''}`;
+        $('out').textContent = data.output || '';
+      } catch (e) {
+        $('exitCode').textContent = '';
+        $('out').textContent = ManagerApi.showError(e, '執行失敗');
+      }
+    }
+
+    $('btnPwd').addEventListener('click', () => setDefaultCommand({ windows: 'cd', linux: 'pwd' }));
+    $('btnList').addEventListener('click', () => setDefaultCommand({ windows: 'dir', linux: 'ls -la' }));
+    $('btnPhpVer').addEventListener('click', () => setDefaultCommand({ windows: 'php -v', linux: 'php -v' }));
+    $('btnToolList').addEventListener('click', () => setDefaultCommand({ windows: 'dir manager\\\\tools', linux: 'ls -la manager/tools' }));
+    $('btnRun').addEventListener('click', runCommand);
+
+    (async () => {
+      await ManagerApi.ready();
+      const info = await ManagerApi.runtimeInfo();
+      $('osText').textContent = `${info?.php?.os_family || ''} (${info?.php?.os || ''})`;
+      await setDefaultCommand({ windows: 'cd', linux: 'pwd' });
+    })();
+  </script>
+</body>
+</html>

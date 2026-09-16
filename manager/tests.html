@@ -1,0 +1,556 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Manager API Tests</title>
+  <style>
+    body { margin: 0; font-family: "Segoe UI", "Noto Sans TC", sans-serif; background: #f6f8fb; color: #1f2a37; }
+    .top-nav { position: sticky; top: 0; z-index: 9999; background: #fff; border-bottom: 1px solid #dbe3f2; padding: 12px 14px; }
+    .home-banner { display: block; padding: 12px 14px; border-radius: 10px; border: 1px solid #cbd5e1; background: #eef5ff; color: #1f2a37; font-size: 30px; text-decoration: none; font-weight: 600; }
+    .wrap { width: min(1200px, 95%); margin: 20px auto 28px; }
+    .group { background: #fff; border: 1px solid #dbe3f2; border-radius: 12px; padding: 14px; margin-bottom: 14px; display: grid; grid-template-columns: 220px 1fr; gap: 14px; }
+    .controls { border: 1px solid #e3eaf7; border-radius: 10px; padding: 10px; background: #fbfdff; }
+    .controls h3 { margin: 0 0 8px; }
+    .controls .btn-col { display: grid; gap: 8px; }
+    .controls label { font-size: 12px; color: #475569; }
+    .controls input { width: 100%; box-sizing: border-box; border: 1px solid #c8d4ea; border-radius: 8px; padding: 6px 8px; }
+    .main h2 { margin: 0 0 6px; }
+    .hint { margin: 0 0 10px; color: #5b6b82; font-size: 13px; }
+    button { border: 1px solid #c8d4ea; background: #fff; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+    .case-list { border: 1px solid #dbe3f2; border-radius: 10px; overflow: hidden; }
+    .case-row { padding: 10px 12px; border-top: 1px solid #eef2f8; display: grid; grid-template-columns: 100px 220px 1fr auto; gap: 8px; align-items: center; background: #fff; cursor: pointer; }
+    .case-row:first-child { border-top: none; }
+    .case-row.pending { background: #fff; }
+    .case-row.running { background: #fff7dc; }
+    .case-row.success { background: #e9f9ee; }
+    .case-row.fail { background: #fdecec; }
+    .case-row.init-row.pending { background: #eef6ff; }
+    .case-row.init-row .case-name { color: #1e3a8a; }
+    .case-row.init-row .status { color: #1e3a8a; }
+    .case-row.finally-row.pending { background: #f3f4f6; }
+    .case-row.finally-row .case-name { color: #4b5563; }
+    .case-row.finally-row .status { color: #4b5563; }
+    .status { font-weight: 600; }
+    .case-name { font-weight: 500; }
+    .case-msg { color: #475569; font-family: ui-monospace, Consolas, "Courier New", monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .case-actions { display: flex; gap: 6px; }
+    .case-actions button { padding: 4px 8px; font-size: 12px; }
+    .log { margin-top: 10px; padding: 10px; border: 1px solid #dbe3f2; border-radius: 8px; background: #fbfdff; color: #334155; white-space: pre-wrap; font-family: ui-monospace, Consolas, "Courier New", monospace; font-size: 12px; min-height: 70px; }
+
+    .modal-mask { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.35); display: none; align-items: center; justify-content: center; z-index: 10000; }
+    .modal { width: min(860px, 92vw); background: #fff; border: 1px solid #dbe3f2; border-radius: 12px; padding: 14px; }
+    .modal h3 { margin: 0 0 8px; }
+    .modal textarea { width: 100%; min-height: 320px; border: 1px solid #c8d4ea; border-radius: 10px; padding: 10px; font-family: ui-monospace, Consolas, "Courier New", monospace; font-size: 13px; box-sizing: border-box; }
+    .modal .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="top-nav"><a class="home-banner" href="index.html">Tests</a></div>
+  <main class="wrap" id="groupsRoot"></main>
+
+  <div id="modalMask" class="modal-mask">
+    <div class="modal">
+      <h3 id="modalTitle">Edit Script</h3>
+      <textarea id="modalEditor"></textarea>
+      <div class="row">
+        <button id="cancelBtn" type="button">取消</button>
+        <button id="saveBtn" type="button">確定</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/server_config.js?v=20260514a"></script>
+  <script src="js/api.js?v=20260514a"></script>
+  <script src="js/test_utils.js"></script>
+  <script src="js/file/upload_utils.js"></script>
+  <script>
+    const GROUPS_URL = 'config/tests/groups.json';
+    const groupsRoot = document.getElementById('groupsRoot');
+    const modalMask = document.getElementById('modalMask');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalEditor = document.getElementById('modalEditor');
+    const saveBtn = document.getElementById('saveBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const api = window.TestApi;
+    const upload = window.UploadLib;
+
+    const groups = [];
+    let editing = null;
+
+    function now() { return new Date().toLocaleTimeString(); }
+    function appendLog(group, msg) {
+      group.logDom.textContent += `[${now()}] ${msg}\n`;
+      group.logDom.scrollTop = group.logDom.scrollHeight;
+    }
+    function setRowStatus(row, status, text) {
+      row.classList.remove('pending','running','success','fail');
+      row.classList.add(status);
+      row.querySelector('.status').textContent = text;
+    }
+    function setRowMsg(row, msg) { row.querySelector('.case-msg').textContent = String(msg ?? ''); }
+    function setRowActions(row, actions) {
+      const wrap = row.querySelector('.case-actions');
+      if (!wrap) return;
+      wrap.innerHTML = '';
+      (actions || []).forEach((a) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = a.label;
+        btn.addEventListener('click', (e) => { e.stopPropagation(); a.onClick(); });
+        wrap.appendChild(btn);
+      });
+    }
+    function pickDragItems() {
+      return new Promise((resolve, reject) => {
+        const mask = document.createElement('div');
+        mask.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:10001;';
+        const box = document.createElement('div');
+        box.style.cssText = 'width:min(560px,92vw);padding:20px;border:2px dashed #94a3b8;border-radius:12px;background:#fff;text-align:center;color:#334155;';
+        box.textContent = '拖放檔案/資料夾到這裡，按 Esc 或點背景取消';
+        mask.appendChild(box);
+        document.body.appendChild(mask);
+        const cleanup = () => { document.removeEventListener('keydown', onKey); mask.remove(); };
+        const onKey = (e) => { if (e.key === 'Escape') { cleanup(); resolve({ files: [], dirs: [] }); } };
+        document.addEventListener('keydown', onKey);
+        mask.addEventListener('click', (e) => { if (e.target === mask) { cleanup(); resolve({ files: [], dirs: [] }); } });
+        mask.addEventListener('dragover', (e) => { e.preventDefault(); });
+        mask.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          try {
+            const items = e.dataTransfer?.items || [];
+            const res = await upload.collectFromDragItems(items, '');
+            cleanup();
+            resolve(res);
+          } catch (err) {
+            cleanup();
+            reject(err);
+          }
+        });
+      });
+    }
+    async function uploadByFormData(url, files, dirs) {
+      const fd = new FormData();
+      files.forEach((f) => fd.append('files[]', f));
+      dirs.forEach((d) => fd.append('dirs[]', d));
+      const res = await fetch(url, { method: 'POST', body: fd });
+      const text = await res.text();
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${text}`);
+      return text;
+    }
+    function isTransferGroup(group) { return group.meta.id === 'transfer_api'; }
+    function isFtpProbeGroup(group) { return group.meta.id === 'ftp_probe'; }
+    function syncFtpProbeScope(group) {
+      if (!isFtpProbeGroup(group)) return;
+      const host = group.controls.querySelector('[data-ftp="host"]')?.value?.trim() || '';
+      const user = group.controls.querySelector('[data-ftp="user"]')?.value || '';
+      const password = group.controls.querySelector('[data-ftp="password"]')?.value || '';
+      const path = group.controls.querySelector('[data-ftp="path"]')?.value?.trim() || '/';
+      group.state.scope.ftpHost = host;
+      group.state.scope.ftpUser = user;
+      group.state.scope.ftpPassword = password;
+      group.state.scope.ftpPath = path || '/';
+    }
+    function updateTransferUi(group) {
+      if (!isTransferGroup(group) || !group.transfer) return;
+      const t = group.transfer;
+      const runBtn = group.controls.querySelector('[data-act="run"]');
+      const stepBtn = group.controls.querySelector('[data-act="step"]');
+      runBtn.disabled = false;
+      stepBtn.disabled = false;
+
+      const uploadFileRow = group.rowById.upload_file;
+      const uploadFolderRow = group.rowById.upload_folder;
+      const uploadDragRow = group.rowById.upload_drag;
+      if (uploadFileRow) {
+        if (t.fileSelected) {
+          setRowActions(uploadFileRow, []);
+        } else {
+          setRowActions(uploadFileRow, [{
+            label: '選擇檔案',
+            onClick: async () => {
+              const picked = await upload.pickFilesMulti();
+              if (!picked.length) return;
+              t.files = picked;
+              t.fileSelected = true;
+              setRowMsg(uploadFileRow, `staged files: ${t.files.length}`);
+              appendLog(group, `upload_file: staged total ${t.files.length}`);
+              updateTransferUi(group);
+            }
+          }]);
+        }
+      }
+      if (uploadFolderRow) {
+        if (t.folderSelected) {
+          setRowActions(uploadFolderRow, []);
+        } else {
+          setRowActions(uploadFolderRow, [{
+            label: '選擇資料夾',
+            onClick: async () => {
+              const files = await upload.pickSingleFolder();
+              if (!files.length) return;
+              t.folderFiles = files;
+              t.folderSelected = true;
+              const tops = new Set(files.map((x) => (x.webkitRelativePath || '').split('/')[0]).filter(Boolean));
+              setRowMsg(uploadFolderRow, `staged folders: ${tops.size}, files: ${(t.folderFiles || []).length}`);
+              appendLog(group, `upload_folder: staged total ${(t.folderFiles || []).length} files`);
+              updateTransferUi(group);
+            }
+          }]);
+        }
+      }
+      if (uploadDragRow) {
+        if (t.dragSelected) {
+          setRowActions(uploadDragRow, []);
+        } else {
+          setRowActions(uploadDragRow, [{
+            label: '拖放導入',
+            onClick: async () => {
+              const picked = await pickDragItems();
+              if (!picked.files.length) return;
+              t.dragFiles = picked.files;
+              t.dragDirs = picked.dirs || [];
+              t.dragSelected = true;
+              setRowMsg(uploadDragRow, `staged drag files: ${t.dragFiles.length}`);
+              appendLog(group, `upload_drag: staged ${t.dragFiles.length} files`);
+              updateTransferUi(group);
+            }
+          }]);
+        }
+      }
+    }
+
+    function normalizeConfig(data) {
+      if (Array.isArray(data)) return { sectionName: 'API', initScript: '', tests: data };
+      return {
+        sectionName: data.sectionName || 'API',
+        initScript: String(data.initScript || ''),
+        finallyScript: String(data.finallyScript || ''),
+        tests: Array.isArray(data.tests) ? data.tests : []
+      };
+    }
+
+    function messageFactory(group) {
+      return (itemId, msg) => {
+        const row = group.rowById[itemId];
+        if (!row) return;
+        const prev = row.querySelector('.case-msg').textContent;
+        setRowMsg(row, prev ? `${prev} | ${msg}` : msg);
+      };
+    }
+
+    function resetGroupState(group) {
+      group.state = { stepIndex: 0, initDone: false, scope: {}, ctx: {} };
+      syncFtpProbeScope(group);
+      if (isTransferGroup(group) && group.transfer) {
+        group.state.scope.selectedUploadFiles = group.transfer.files;
+        group.state.scope.selectedUploadFolderFiles = group.transfer.folderFiles;
+        group.state.scope.selectedUploadDragFiles = group.transfer.dragFiles;
+        group.state.scope.selectedUploadDragDirs = group.transfer.dragDirs;
+      }
+      group.logDom.textContent = '';
+      Object.values(group.rowById).forEach((row) => { setRowStatus(row, 'pending', 'Pending'); setRowMsg(row, ''); });
+    }
+    function hardResetGroup(group) {
+      if (isTransferGroup(group)) {
+        group.transfer = {
+          files: [],
+          folderFiles: [],
+          dragFiles: [],
+          dragDirs: [],
+          fileSelected: false,
+          folderSelected: false,
+          dragSelected: false,
+          fileUploaded: false,
+          folderUploaded: false,
+          dragUploaded: false
+        };
+      }
+      resetGroupState(group);
+      updateTransferUi(group);
+      appendLog(group, '已重置');
+    }
+
+    async function executeScript(group, scriptText, itemId) {
+      const assert = (condition, msg) => { if (!condition) throw new Error(msg || 'assert failed'); };
+      return await api.utils.runScriptText(scriptText || '', {
+        api,
+        utils: api.utils,
+        ctx: group.state.ctx,
+        scope: group.state.scope,
+        expose: { _id: itemId, message: messageFactory(group) },
+        log: (m) => appendLog(group, m),
+        assert
+      });
+    }
+
+    function applyReturnToScope(group, result) {
+      let msg = '';
+      if (result && typeof result === 'object' && !Array.isArray(result)) {
+        const obj = { ...result };
+        if ('message' in obj) { msg = String(obj.message ?? ''); delete obj.message; }
+        if ('msg' in obj && !msg) { msg = String(obj.msg ?? ''); delete obj.msg; }
+        Object.assign(group.state.scope, obj);
+      } else if (result != null) {
+        msg = String(result);
+      }
+      return msg;
+    }
+
+    async function runInit(group) {
+      if (group.state.initDone) return true;
+      syncFtpProbeScope(group);
+      const row = group.rowById.__init__;
+      setRowStatus(row, 'running', 'Running'); setRowMsg(row, '');
+      try {
+        const r = await executeScript(group, group.suite.initScript, '__init__');
+        const msg = applyReturnToScope(group, r) || '(no message)';
+        setRowStatus(row, 'success', 'Success'); setRowMsg(row, msg);
+        group.state.initDone = true; appendLog(group, `[INIT] ${msg}`); return true;
+      } catch (e) {
+        setRowStatus(row, 'fail', 'Fail'); setRowMsg(row, e.message); appendLog(group, `[INIT] ${e.message}`); return false;
+      }
+    }
+    async function runFinally(group, reason) {
+      const row = group.rowById.__finally__;
+      if (!row) return true;
+      setRowStatus(row, 'running', 'Running'); setRowMsg(row, '');
+      try {
+        const r = await executeScript(group, group.suite.finallyScript, '__finally__');
+        const msg = applyReturnToScope(group, r) || '(no message)';
+        setRowStatus(row, 'success', 'Success'); setRowMsg(row, msg);
+        appendLog(group, `[FINALLY:${reason}] ${msg}`);
+        return true;
+      } catch (e) {
+        setRowStatus(row, 'fail', 'Fail'); setRowMsg(row, e.message);
+        appendLog(group, `[FINALLY:${reason}] ${e.message}`);
+        return false;
+      }
+    }
+
+    async function runOne(group, idx) {
+      const t = group.suite.tests[idx]; const row = group.rows.tests[idx];
+      setRowStatus(row, 'running', 'Running'); setRowMsg(row, '');
+      try {
+        syncFtpProbeScope(group);
+        if (isTransferGroup(group) && group.transfer) {
+          group.state.scope.selectedUploadFiles = group.transfer.files;
+          group.state.scope.selectedUploadFolderFiles = group.transfer.folderFiles;
+          group.state.scope.selectedUploadDragFiles = group.transfer.dragFiles;
+          group.state.scope.selectedUploadDragDirs = group.transfer.dragDirs;
+        }
+        const r = await executeScript(group, t.scriptText, t.id);
+        const msg = applyReturnToScope(group, r) || '(no message)';
+        if (isTransferGroup(group) && group.transfer) {
+          if (t.id === 'upload_file') group.transfer.fileUploaded = true;
+          if (t.id === 'upload_folder') group.transfer.folderUploaded = true;
+          if (t.id === 'upload_drag') group.transfer.dragUploaded = true;
+          updateTransferUi(group);
+        }
+        setRowStatus(row, 'success', 'Success'); setRowMsg(row, msg); appendLog(group, `${t.name}: ${msg}`); return true;
+      } catch (e) {
+        setRowStatus(row, 'fail', 'Fail'); setRowMsg(row, e.message); appendLog(group, `${t.name}: ${e.message}`); return false;
+      }
+    }
+
+    async function runAll(group) {
+      if (!group.suite.tests.length) return appendLog(group, '沒有可執行 tests');
+      resetGroupState(group);
+      if (!await runInit(group)) return;
+      const waitMs = Math.max(0, Number(group.waitInput.value || 0));
+      for (let i = 0; i < group.suite.tests.length; i++) {
+        const ok = await runOne(group, i);
+        if (!ok) {
+          await runFinally(group, `fail@${group.suite.tests[i].id}`);
+          break;
+        }
+        if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+      }
+    }
+
+    async function runStep(group) {
+      if (!group.suite.tests.length) return appendLog(group, '沒有可執行 tests');
+      if (group.state.stepIndex === 0 && !group.state.initDone) {
+        resetGroupState(group);
+        if (!await runInit(group)) return;
+      }
+      if (group.state.stepIndex >= group.suite.tests.length) return appendLog(group, 'Step Run 已完成');
+      const ok = await runOne(group, group.state.stepIndex);
+      if (ok) {
+        group.state.stepIndex += 1;
+      } else {
+        await runFinally(group, `fail@${group.suite.tests[group.state.stepIndex].id}`);
+      }
+    }
+
+    function openEditor(group, target) {
+      editing = { group, target };
+      if (target.kind === 'init') {
+        modalTitle.textContent = `[${group.meta.title}] Init Script`;
+        modalEditor.value = group.suite.initScript;
+      } else if (target.kind === 'finally') {
+        modalTitle.textContent = `[${group.meta.title}] Finally Script`;
+        modalEditor.value = group.suite.finallyScript;
+      } else {
+        const t = group.suite.tests[target.index];
+        modalTitle.textContent = `[${group.meta.title}] ${t.name}`;
+        modalEditor.value = t.scriptText;
+      }
+      modalMask.style.display = 'flex';
+      modalEditor.focus();
+    }
+
+    function closeEditor() { editing = null; modalMask.style.display = 'none'; }
+
+    function renderGroup(meta) {
+      const host = document.createElement('section');
+      host.className = 'group';
+      host.innerHTML = `
+        <div class="controls">
+          <h3>${meta.title}</h3>
+          <div class="btn-col">
+            <button data-act="reset">Reset</button>
+            <button data-act="run">Run</button>
+            <button data-act="step">Step</button>
+            <label>Wait(ms)</label>
+            <input type="number" min="0" step="50" value="0">
+          </div>
+        </div>
+        <div class="main">
+          <h2>${meta.title}</h2>
+          <p class="hint">點擊 item 可編輯腳本（記憶體層）。</p>
+          <div class="case-list"></div>
+          <div class="log"></div>
+        </div>`;
+      groupsRoot.appendChild(host);
+
+      const controls = host.querySelector('.controls');
+      const caseList = host.querySelector('.case-list');
+      const logDom = host.querySelector('.log');
+      const waitInput = controls.querySelector('input');
+
+      const group = {
+        meta, host, controls, caseList, logDom, waitInput,
+        suite: { sectionName: meta.title, initScript: '', tests: [] },
+        rows: { init: null, tests: [] },
+        rowById: {},
+        state: { stepIndex: 0, initDone: false, scope: {}, ctx: {} },
+        transfer: null
+      };
+      groups.push(group);
+
+      if (meta.id === 'ftp_probe') {
+        const probe = document.createElement('div');
+        probe.style.marginTop = '10px';
+        probe.innerHTML = `
+          <label>FTP Host</label><input data-ftp="host" type="text" placeholder="ftp.example.com">
+          <label>FTP User</label><input data-ftp="user" type="text" placeholder="username">
+          <label>FTP Password</label><input data-ftp="password" type="password" placeholder="password">
+          <label>Path</label><input data-ftp="path" type="text" value="/" placeholder="/">
+        `;
+        controls.appendChild(probe);
+      }
+
+      controls.querySelector('[data-act="reset"]').addEventListener('click', () => hardResetGroup(group));
+      controls.querySelector('[data-act="run"]').addEventListener('click', () => runAll(group));
+      controls.querySelector('[data-act="step"]').addEventListener('click', () => runStep(group));
+      return group;
+    }
+
+    function renderSuite(group) {
+      group.caseList.innerHTML = '';
+      group.rowById = {};
+      group.rows = { init: null, tests: [] };
+
+      const initRow = document.createElement('div');
+      initRow.className = 'case-row pending init-row';
+      initRow.innerHTML = `<div class="status">Pending</div><div class="case-name">[INIT] ${group.suite.sectionName}</div><div class="case-msg"></div><div class="case-actions"></div>`;
+      initRow.addEventListener('click', () => openEditor(group, { kind: 'init' }));
+      group.caseList.appendChild(initRow);
+      group.rows.init = initRow;
+      group.rowById.__init__ = initRow;
+
+      group.suite.tests.forEach((t, idx) => {
+        const row = document.createElement('div');
+        row.className = 'case-row pending';
+        row.innerHTML = `<div class="status">Pending</div><div class="case-name">${t.name}</div><div class="case-msg"></div><div class="case-actions"></div>`;
+        row.addEventListener('click', () => openEditor(group, { kind: 'test', index: idx }));
+        group.caseList.appendChild(row);
+        group.rows.tests.push(row);
+        group.rowById[t.id] = row;
+      });
+
+      const finallyRow = document.createElement('div');
+      finallyRow.className = 'case-row pending finally-row';
+      finallyRow.innerHTML = `<div class="status">Pending</div><div class="case-name">[FINALLY] ${group.suite.sectionName}</div><div class="case-msg"></div><div class="case-actions"></div>`;
+      finallyRow.addEventListener('click', () => openEditor(group, { kind: 'finally' }));
+      group.caseList.appendChild(finallyRow);
+      group.rowById.__finally__ = finallyRow;
+
+      if (isTransferGroup(group)) {
+        group.transfer = {
+          files: [],
+          folderFiles: [],
+          dragFiles: [],
+          dragDirs: [],
+          fileSelected: false,
+          folderSelected: false,
+          dragSelected: false,
+          fileUploaded: false,
+          folderUploaded: false,
+          dragUploaded: false
+        };
+      }
+
+      resetGroupState(group);
+      updateTransferUi(group);
+      appendLog(group, `已載入 ${group.suite.tests.length} 個 test steps`);
+    }
+
+    async function loadGroup(group) {
+      try {
+        const res = await fetch(group.meta.configUrl, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        const data = await res.json();
+        group.suite = normalizeConfig(data);
+        if (!group.suite.initScript.trim()) throw new Error('config requires initScript');
+        if (!group.suite.finallyScript.trim()) throw new Error('config requires finallyScript');
+        renderSuite(group);
+      } catch (e) {
+        appendLog(group, '載入 config 失敗: ' + e.message);
+      }
+    }
+
+    async function boot() {
+      const res = await fetch(GROUPS_URL, { cache: 'no-store' });
+      const metas = await res.json();
+      metas.forEach((m) => renderGroup(m));
+      for (const g of groups) await loadGroup(g);
+    }
+
+    saveBtn.addEventListener('click', () => {
+      if (!editing) return closeEditor();
+      const { group, target } = editing;
+      if (target.kind === 'init') {
+        group.suite.initScript = modalEditor.value;
+        appendLog(group, '已更新 INIT script（記憶體）');
+      } else if (target.kind === 'finally') {
+        group.suite.finallyScript = modalEditor.value;
+        appendLog(group, '已更新 FINALLY script（記憶體）');
+      } else {
+        group.suite.tests[target.index].scriptText = modalEditor.value;
+        appendLog(group, `已更新 ${group.suite.tests[target.index].name} script（記憶體）`);
+      }
+      closeEditor();
+    });
+    cancelBtn.addEventListener('click', closeEditor);
+    modalMask.addEventListener('click', (e) => { if (e.target === modalMask) closeEditor(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modalMask.style.display === 'flex') closeEditor(); });
+
+    boot();
+  </script>
+</body>
+</html>

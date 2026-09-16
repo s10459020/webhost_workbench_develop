@@ -1,0 +1,364 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>FTP Explorer</title>
+  <script src="js/server_config.js?v=20260514-3"></script>
+  <script src="js/api.js?v=20260529-2"></script>
+  <style>
+    :root{--bg:#eef2f7;--card:#ffffff;--line:#d7dde8;--text:#1e293b;--muted:#64748b;--primary:#2563eb;--primary-soft:#dbeafe;--dir-bg:#fff6db;--dir-bd:#f4dea0;--file-bg:#eef5ff;--file-bd:#c8daf8}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:"Segoe UI","Noto Sans TC",sans-serif;background:radial-gradient(1200px 500px at 20% -10%, #e9f2ff, transparent),var(--bg);color:var(--text)}
+    .top-nav{position:sticky;top:0;z-index:9999;background:rgba(255,255,255,.96);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:10px 14px}
+    .home-banner{display:block;padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:#f8fafc;color:var(--text);font-size:20px;text-decoration:none;font-weight:600}
+    .page-wrap{width:min(1320px,96%);margin:14px auto 20px}
+    .toolbar-card,.content-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;box-shadow:0 1px 3px rgba(15,23,42,.06)}
+    .toolbar-card{display:grid;gap:10px}
+    .toolbar-actions,.connect-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    .path-row{display:flex;gap:8px;align-items:center}
+    .path-row input{flex:1;border:1px solid var(--line);border-radius:10px;padding:9px 10px;font-size:14px}
+    .connect-row input,.connect-row select{border:1px solid var(--line);border-radius:9px;padding:7px 10px;font:inherit}
+    .port-pill{display:inline-block;border:1px solid var(--line);border-radius:9px;padding:7px 10px;background:#f8fafc;color:#334155;min-width:78px;text-align:center}
+    .breadcrumb{display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px dashed var(--line);border-radius:10px;background:#fbfdff}
+    .breadcrumb button{padding:4px 8px;font-size:12px;border-radius:999px;background:var(--primary-soft);border-color:#c9dbff;color:#15306c}
+    .status{white-space:pre-wrap;color:var(--muted);font-size:13px;border:1px dashed #dbe3f0;border-radius:8px;padding:8px;background:#fbfdff}
+    button{border:1px solid #c8d4ea;background:#fff;border-radius:9px;padding:7px 11px;cursor:pointer;transition:.18s ease}
+    button:hover{transform:translateY(-1px);border-color:#9bb4de;box-shadow:0 3px 10px rgba(21,42,88,.08)}
+    .content-card{display:grid;grid-template-columns:1fr;gap:10px}
+    .panel{background:#fff;border:1px solid #e5eaf2;border-radius:10px;padding:10px;overflow:hidden}
+    .panel-title{margin:0 0 8px;font-size:14px;color:var(--muted);font-weight:600}
+    .list-header{display:grid;grid-template-columns:24px minmax(280px,1fr) 90px 100px 70px 70px;gap:8px;font-size:12px;color:var(--muted);padding:7px 8px;border:1px solid #e9edf5;border-radius:8px;background:#f8fafc;margin-top:8px;margin-bottom:6px}
+    #drop{list-style:none;padding:0;margin:0}
+    #drop li{display:grid;grid-template-columns:24px minmax(280px,1fr) 90px 100px 70px 70px;gap:8px;align-items:center;padding:7px 8px;border-bottom:1px solid #eef2f7}
+    #drop li:hover{background:#f8fbff}
+    .item-check{width:16px;height:16px;margin:0}
+    .item-name{display:inline-block;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:7px 9px;border-radius:8px;border:1px solid transparent;cursor:pointer}
+    .item-name.dir{background:var(--dir-bg);border-color:var(--dir-bd);font-weight:600}
+    .item-name.file{background:var(--file-bg);border-color:var(--file-bd)}
+    .col-size{color:var(--muted);font-size:12px;text-align:right}
+    @media (max-width:980px){.list-header,#drop li{grid-template-columns:24px minmax(220px,1fr) 80px 84px 64px 64px}}
+  </style>
+</head>
+<body>
+  <div class="top-nav"><a class="home-banner" href="index.html">FTP Explorer</a></div>
+  <main class="page-wrap">
+    <section class="toolbar-card">
+      <div class="connect-row">
+        <select id="mode">
+          <option value="ftp">FTP</option>
+          <option value="ftps_explicit">FTPS Explicit</option>
+          <option value="ftps_implicit">FTPS Implicit</option>
+          <option value="sftp">SFTP</option>
+        </select>
+        <input id="host" placeholder="Host">
+        <span id="port" class="port-pill">21</span>
+        <input id="user" placeholder="User">
+        <input id="password" type="password" placeholder="Password">
+        <label><input id="rememberPwd" type="checkbox"> 記住密碼</label>
+        <button id="btnConnect" type="button">連線</button>
+      </div>
+
+      <div class="toolbar-actions">
+        <button id="btnUp" type="button">上一層</button>
+        <button id="btnReload" type="button">重新整理</button>
+        <input id="newDir" placeholder="新資料夾名稱">
+        <button id="btnMkdir" type="button">建立資料夾</button>
+        <input id="uploadFile" type="file">
+        <button id="btnUpload" type="button">上傳</button>
+        <button id="btnDownload" type="button">下載勾選</button>
+      </div>
+
+      <div class="path-row">
+        <label for="path">路徑</label>
+        <input id="path" type="text" value="/">
+      </div>
+      <div id="breadcrumb" class="breadcrumb"></div>
+      <div id="status" class="status">就緒</div>
+    </section>
+
+    <section class="content-card">
+      <div class="panel">
+        <p class="panel-title">遠端檔案列表</p>
+        <div class="list-header">
+          <span></span><span>名稱</span><span class="col-size">大小</span><span>類型</span><span>下載</span><span>刪除</span>
+        </div>
+        <ul id="drop"></ul>
+      </div>
+    </section>
+  </main>
+
+  <template id="itemTpl">
+    <li>
+      <input class="item-check" type="checkbox">
+      <span class="item-name"></span>
+      <span class="col-size">-</span>
+      <span>-</span>
+      <button type="button">下載</button>
+      <button type="button">刪除</button>
+    </li>
+  </template>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const COOKIE_PREFIX = 'shv_ftp_';
+    let currentRows = [];
+
+    function setCookie(name, value, days = 30){
+      const maxAge = Math.max(1, Math.floor(days * 86400));
+      document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+    }
+    function getCookie(name){
+      const key = `${name}=`;
+      for (const raw of document.cookie.split(';')) {
+        const c = raw.trim();
+        if (c.startsWith(key)) return decodeURIComponent(c.substring(key.length));
+      }
+      return '';
+    }
+    function deleteCookie(name){
+      document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
+    }
+
+    function defaultPortByMode(mode){
+      if (mode === 'sftp') return '22';
+      if (mode === 'ftps_implicit') return '990';
+      return '21';
+    }
+
+    function setStatus(text){ $('status').textContent = text; }
+
+    function cfg(){
+      return {
+        mode: $('mode').value,
+        host: $('host').value.trim(),
+        port: defaultPortByMode($('mode').value),
+        user: $('user').value,
+        password: $('password').value,
+        path: normalizePath($('path').value)
+      };
+    }
+
+    function normalizePath(p){
+      const x = String(p || '/').replace(/\\/g, '/').trim();
+      if (!x) return '/';
+      const n = x.replace(/\/+/g, '/');
+      return n.startsWith('/') ? n : '/' + n;
+    }
+
+    function joinPath(base, name){
+      const b = normalizePath(base).replace(/\/+$/, '') || '/';
+      const n = String(name || '').replace(/^\/+/, '');
+      if (b === '/') return '/' + n;
+      return b + '/' + n;
+    }
+
+    function parentPath(p){
+      const raw = normalizePath(p);
+      if (raw === '/') return '/';
+      const t = raw.endsWith('/') ? raw.slice(0, -1) : raw;
+      const i = t.lastIndexOf('/');
+      return i <= 0 ? '/' : t.slice(0, i);
+    }
+
+    function saveLoginCookies(){
+      setCookie(`${COOKIE_PREFIX}mode`, $('mode').value);
+      setCookie(`${COOKIE_PREFIX}host`, $('host').value.trim());
+      setCookie(`${COOKIE_PREFIX}user`, $('user').value);
+      setCookie(`${COOKIE_PREFIX}path`, normalizePath($('path').value));
+      const remember = $('rememberPwd').checked;
+      setCookie(`${COOKIE_PREFIX}remember_pwd`, remember ? '1' : '0');
+      if (remember) setCookie(`${COOKIE_PREFIX}pwd`, $('password').value);
+      else deleteCookie(`${COOKIE_PREFIX}pwd`);
+    }
+
+    function loadLoginCookies(){
+      const mode = getCookie(`${COOKIE_PREFIX}mode`);
+      const host = getCookie(`${COOKIE_PREFIX}host`);
+      const user = getCookie(`${COOKIE_PREFIX}user`);
+      const path = getCookie(`${COOKIE_PREFIX}path`);
+      const remember = getCookie(`${COOKIE_PREFIX}remember_pwd`) === '1';
+      const pwd = remember ? getCookie(`${COOKIE_PREFIX}pwd`) : '';
+      if (mode) $('mode').value = mode;
+      if (host) $('host').value = host;
+      if (user) $('user').value = user;
+      if (path) $('path').value = normalizePath(path);
+      $('rememberPwd').checked = remember;
+      if (pwd) $('password').value = pwd;
+      $('port').textContent = defaultPortByMode($('mode').value);
+    }
+
+    function renderBreadcrumb(path){
+      const dom = $('breadcrumb');
+      dom.innerHTML = '';
+      const clean = normalizePath(path);
+      const segs = clean.split('/').filter(Boolean);
+      let acc = '/';
+      const rootBtn = document.createElement('button');
+      rootBtn.type = 'button';
+      rootBtn.textContent = '/';
+      rootBtn.onclick = () => { $('path').value = '/'; loadList(); };
+      dom.appendChild(rootBtn);
+      for (const seg of segs){
+        acc = acc === '/' ? '/' + seg : acc + '/' + seg;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = seg;
+        const target = acc;
+        btn.onclick = () => { $('path').value = target; loadList(); };
+        dom.appendChild(btn);
+      }
+    }
+
+    function selectedRows(){
+      const out = [];
+      document.querySelectorAll('#drop li').forEach((el) => {
+        const ck = el.querySelector('.item-check');
+        if (!ck || !ck.checked) return;
+        const idx = Number(el.getAttribute('data-index'));
+        if (!Number.isFinite(idx) || idx < 0) return;
+        const row = currentRows[idx];
+        if (row) out.push(row);
+      });
+      return out;
+    }
+
+    async function downloadOne(row){
+      await ManagerApi.ready();
+      if (row.type !== 'file') return;
+      ManagerApi.submit('ftp_download', { ...cfg(), file_path: row.path }, { method: 'POST' });
+    }
+
+    function renderList(path, rows){
+      const ul = $('drop');
+      ul.innerHTML = '';
+      const tpl = $('itemTpl');
+      rows.forEach((r, idx) => {
+        const li = tpl.content.firstElementChild.cloneNode(true);
+        li.setAttribute('data-index', String(idx));
+        const nameEl = li.children[1];
+        const sizeEl = li.children[2];
+        const typeEl = li.children[3];
+        const dlBtn = li.children[4];
+        const delBtn = li.children[5];
+
+        nameEl.textContent = r.name;
+        nameEl.classList.add(r.type === 'dir' ? 'dir' : 'file');
+        sizeEl.textContent = r.type === 'file' ? String(r.size || 0) : '-';
+        typeEl.textContent = r.type;
+
+        nameEl.ondblclick = async () => {
+          if (r.type !== 'dir') return;
+          $('path').value = r.path;
+          await loadList();
+        };
+
+        dlBtn.onclick = async () => {
+          if (r.type !== 'file') return;
+          await downloadOne(r);
+        };
+
+        delBtn.onclick = async () => {
+          if (!confirm(`確定刪除 ${r.path} ?`)) return;
+          try{
+            await ManagerApi.ready();
+            await ManagerApi.post('ftp_delete', { ...cfg(), file_path: r.path, target_type: r.type === 'dir' ? 'dir' : 'file' });
+            await loadList();
+          }catch(e){
+            setStatus(ManagerApi.showError(e, 'FTP 刪除失敗'));
+          }
+        };
+
+        if (r.type !== 'file') {
+          dlBtn.disabled = true;
+        }
+
+        ul.appendChild(li);
+      });
+    }
+
+    async function loadList(){
+      try{
+        await ManagerApi.ready();
+        const c = cfg();
+        const data = JSON.parse(await ManagerApi.post('ftp_list', c));
+        currentRows = Array.isArray(data.rows) ? data.rows : [];
+        $('path').value = normalizePath(data.path || c.path);
+        renderBreadcrumb($('path').value);
+        renderList($('path').value, currentRows);
+        saveLoginCookies();
+        setStatus(`已載入 ${currentRows.length} 筆`);
+      }catch(e){
+        setStatus(ManagerApi.showError(e, 'FTP 載入失敗'));
+      }
+    }
+
+    async function uploadCurrent(){
+      const file = $('uploadFile').files[0];
+      if (!file) {
+        setStatus('請先選擇要上傳的檔案');
+        return;
+      }
+      try{
+        await ManagerApi.ready();
+        setStatus(`正在上傳 ${file.name}...`);
+        const c = cfg();
+        const fd = new FormData();
+        Object.keys(c).forEach((k) => fd.append(k, c[k]));
+        fd.append('target_dir', c.path);
+        fd.append('file', file, file.name);
+        await ManagerApi.post('ftp_upload', fd);
+        $('uploadFile').value = '';
+        await loadList();
+        setStatus(`上傳完成: ${file.name}`);
+      }catch(e){
+        setStatus(ManagerApi.showError(e, 'FTP 上傳失敗'));
+      }
+    }
+
+    async function mkdirCurrent(){
+      const name = $('newDir').value.trim();
+      if (!name) return;
+      try{
+        await ManagerApi.ready();
+        await ManagerApi.post('ftp_mkdir', { ...cfg(), dir_path: joinPath($('path').value, name) });
+        $('newDir').value = '';
+        await loadList();
+      }catch(e){
+        setStatus(ManagerApi.showError(e, 'FTP 建立資料夾失敗'));
+      }
+    }
+
+    async function downloadSelected(){
+      const rows = selectedRows();
+      if (!rows.length) {
+        setStatus('請先勾選檔案');
+        return;
+      }
+      for (const row of rows){
+        if (row.type !== 'file') continue;
+        await downloadOne(row);
+      }
+    }
+
+    $('mode').addEventListener('change', () => {
+      $('port').textContent = defaultPortByMode($('mode').value);
+      saveLoginCookies();
+    });
+    $('rememberPwd').addEventListener('change', saveLoginCookies);
+    $('btnConnect').addEventListener('click', loadList);
+    $('btnReload').addEventListener('click', loadList);
+    $('btnUp').addEventListener('click', () => { $('path').value = parentPath($('path').value); loadList(); });
+    $('btnMkdir').addEventListener('click', mkdirCurrent);
+    $('btnUpload').addEventListener('click', uploadCurrent);
+    $('btnDownload').addEventListener('click', downloadSelected);
+    $('path').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadList(); });
+
+    loadLoginCookies();
+  </script>
+</body>
+</html>
+

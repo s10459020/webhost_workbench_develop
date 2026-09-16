@@ -1,0 +1,27 @@
+﻿{
+    "sectionName":  "Dir API",
+    "initScript":  "await ManagerApi.ready();\nconst workspaceRoot = (await utils.postForm(ManagerApi.url(\u0027get_root\u0027), {})).trim().replace(/\\/$/, \u0027\u0027);\nconst managerDir = new URL(window.SHV_MANAGER_URL).pathname.replace(/\\/$/, \u0027\u0027).split(\u0027/\u0027).pop();\nconst baseDir = workspaceRoot + \u0027/\u0027 + managerDir + \u0027/.temp\u0027;\nconst testDirName = \u0027api-dir\u0027;\nreturn {\n  baseDir, testDirName,\n  createDirUrl: ManagerApi.url(\u0027create_dir\u0027),\n  scanDirUrl: ManagerApi.url(\u0027scan_dir\u0027),\n  renameDirUrl: ManagerApi.url(\u0027rename_dir\u0027),\n  deleteDirUrl: ManagerApi.url(\u0027delete_dir\u0027),\n  message: \u0027init done: \u0027 + baseDir\n};",
+    "finallyScript":  "const names = [\u0027api-dir\u0027, \u0027api-dir-renamed\u0027];\nfor (const n of names) {\n  try { await utils.postForm(deleteDirUrl, { path: baseDir + \u0027/\u0027 + n }); } catch (_) {}\n}\nreturn { message: \u0027cleanup done\u0027 };",
+    "tests":  [
+                  {
+                      "id":  "create",
+                      "name":  "create",
+                      "scriptText":  "const text = await utils.postForm(createDirUrl, { dir: baseDir, name: testDirName });\nconst m = text.match(/\\[(.+?)\\/\\]/);\nassert(m \u0026\u0026 m[1], \u0027create: parse fail\u0027);\nreturn { dirPath: m[1], message: \u0027created=\u0027 + m[1] };"
+                  },
+                  {
+                      "id":  "scan",
+                      "name":  "scan",
+                      "scriptText":  "const text = await utils.postForm(scanDirUrl, { path: baseDir });\nconst arr = JSON.parse(text || \u0027[]\u0027);\nassert(Array.isArray(arr), \u0027scan dir: result not array\u0027);\nconst names = arr.map(x =\u003e x.name);\nassert(names.includes(utils.basename(dirPath)), \u0027scan dir: dir missing\u0027);\nreturn { message: \u0027scan ok\u0027 };"
+                  },
+                  {
+                      "id":  "rename",
+                      "name":  "rename",
+                      "scriptText":  "const text = await utils.postForm(renameDirUrl, { path: dirPath, name: \u0027api-dir-renamed\u0027 });\nconst m = text.match(/to \\[(.+?)\\/\\]/);\nassert(m \u0026\u0026 m[1], \u0027rename dir: parse fail\u0027);\nconst arr = JSON.parse((await utils.postForm(scanDirUrl, { path: baseDir })) || \u0027[]\u0027);\nassert(Array.isArray(arr), \u0027rename dir: scan result not array\u0027);\nconst names = arr.map(x =\u003e x.name);\nassert(!names.includes(utils.basename(dirPath)), \u0027rename dir: old name still exists\u0027);\nassert(names.includes(utils.basename(m[1])), \u0027rename dir: new name missing\u0027);\nreturn { renamedDirPath: m[1], message: \u0027renamed + verified=\u0027 + m[1] };"
+                  },
+                  {
+                      "id":  "delete",
+                      "name":  "delete",
+                      "scriptText":  "await utils.postForm(deleteDirUrl, { path: renamedDirPath });\nconst arr = JSON.parse((await utils.postForm(scanDirUrl, { path: baseDir })) || \u0027[]\u0027);\nassert(Array.isArray(arr), \u0027delete dir: scan result not array\u0027);\nconst names = arr.map(x =\u003e x.name);\nassert(!names.includes(utils.basename(renamedDirPath)), \u0027delete dir: renamed still exists\u0027);\nreturn { message: \u0027deleted + verified\u0027 };"
+                  }
+              ]
+}

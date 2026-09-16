@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>MySQL</title>
+  <script src="js/server_config.js?v=20260513-3"></script>
+  <script src="js/api.js?v=20260529-1"></script>
+  <style>
+    :root{--bg:#f2f5fb;--card:#fff;--line:#d7e2f3;--text:#1f2a37;--muted:#58657a}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:"Segoe UI","Noto Sans TC",sans-serif;background:var(--bg);color:var(--text)}
+    .top-nav{position:sticky;top:0;z-index:1000;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:12px 14px}
+    .home-banner{display:block;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:linear-gradient(135deg,#eef5ff,#f8fbff);color:var(--text);font-size:30px;text-decoration:none;font-weight:600}
+    .wrap{width:min(1280px,94%);margin:18px auto 24px}
+    .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .row input,.row select,.row textarea{border:1px solid var(--line);border-radius:9px;padding:7px 10px;font:inherit}
+    .row textarea{width:100%;min-height:130px;font-family:ui-monospace,Consolas,monospace}
+    .grow{flex:1;min-width:160px}
+    button{border:1px solid #c8d4ea;background:#fff;border-radius:9px;padding:7px 11px;cursor:pointer}
+    .muted{color:var(--muted)}
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:left;vertical-align:top;max-width:460px;word-break:break-word}
+    #status{white-space:pre-wrap}
+  </style>
+</head>
+<body>
+  <div class="top-nav"><a class="home-banner" href="index.html">MySQL</a></div>
+  <main class="wrap">
+    <section class="panel">
+      <div class="row">
+        <input id="dbHost" value="127.0.0.1" placeholder="DB_HOST">
+        <input id="dbAcc" value="root" placeholder="DB_ACC">
+        <input id="dbPwd" type="password" placeholder="DB_PWD">
+        <label><input id="rememberPwd" type="checkbox"> 記住密碼</label>
+        <button id="btnConnect" type="button">連線</button>
+        <button id="btnExportAll" type="button">全域匯出 SQL</button>
+      </div>
+      <p id="status" class="muted">尚未連線</p>
+    </section>
+
+    <section class="panel">
+      <div class="row">
+        <label for="dbSelect">資料庫</label>
+        <select id="dbSelect" class="grow"></select>
+        <label for="tableSelect">資料表</label>
+        <select id="tableSelect" class="grow"></select>
+        <button id="btnSelectTable" type="button">查詢資料表</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="row">
+        <textarea id="sql">SHOW TABLES;</textarea>
+      </div>
+      <div class="row">
+        <button id="btnRun" type="button">執行 SQL</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div id="result"></div>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let selectedDatabase = '';
+    const COOKIE_PREFIX = 'shv_mysql_';
+
+    function setCookie(name, value, days = 30){
+      const maxAge = Math.max(1, Math.floor(days * 86400));
+      document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+    }
+    function getCookie(name){
+      const key = `${name}=`;
+      const parts = document.cookie.split(';');
+      for (const raw of parts){
+        const one = raw.trim();
+        if (one.startsWith(key)) return decodeURIComponent(one.substring(key.length));
+      }
+      return '';
+    }
+    function deleteCookie(name){
+      document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
+    }
+    function loadLoginCookies(){
+      const host = getCookie(`${COOKIE_PREFIX}host`);
+      const acc = getCookie(`${COOKIE_PREFIX}acc`);
+      const db = getCookie(`${COOKIE_PREFIX}db`);
+      const remember = getCookie(`${COOKIE_PREFIX}remember_pwd`) === '1';
+      const pwd = remember ? getCookie(`${COOKIE_PREFIX}pwd`) : '';
+      if (host) $('dbHost').value = host;
+      if (acc) $('dbAcc').value = acc;
+      if (db) selectedDatabase = db;
+      $('rememberPwd').checked = remember;
+      if (pwd) $('dbPwd').value = pwd;
+    }
+    function saveLoginCookies(){
+      setCookie(`${COOKIE_PREFIX}host`, $('dbHost').value.trim());
+      setCookie(`${COOKIE_PREFIX}acc`, $('dbAcc').value);
+      setCookie(`${COOKIE_PREFIX}db`, selectedDatabase || $('dbSelect').value || '');
+      const remember = $('rememberPwd').checked;
+      setCookie(`${COOKIE_PREFIX}remember_pwd`, remember ? '1' : '0');
+      if (remember) setCookie(`${COOKIE_PREFIX}pwd`, $('dbPwd').value);
+      else deleteCookie(`${COOKIE_PREFIX}pwd`);
+    }
+
+    function connData(useSelectedDb = false){
+      const chosenDb = $('dbSelect').value || selectedDatabase;
+      return {
+        host: $('dbHost').value.trim(),
+        port: '3306',
+        user: $('dbAcc').value,
+        password: $('dbPwd').value,
+        database: useSelectedDb ? chosenDb : selectedDatabase
+      };
+    }
+
+    function setStatus(text){
+      $('status').textContent = text;
+    }
+
+    function fillSelect(select, values){
+      select.innerHTML = '';
+      if (!values.length) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '(empty)';
+        select.appendChild(opt);
+        return;
+      }
+      values.forEach((value) => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = value;
+        select.appendChild(opt);
+      });
+    }
+
+    function renderResult(payload){
+      const result = $('result');
+      if (payload.kind === 'execute') {
+        result.innerHTML = `<p>SQL 執行完成，affectedRows=${payload.affectedRows}, insertId=${payload.insertId}</p>`;
+        return;
+      }
+      const columns = payload.columns || [];
+      const rows = payload.rows || [];
+      let html = `<p>rows: ${rows.length}</p><table><thead><tr>`;
+      columns.forEach((c) => { html += `<th>${c}</th>`; });
+      html += '</tr></thead><tbody>';
+      rows.forEach((row) => {
+        html += '<tr>';
+        columns.forEach((c) => {
+          const v = row[c] === null ? 'NULL' : String(row[c]);
+          html += `<td>${v.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      result.innerHTML = html;
+    }
+
+    async function connectOnly(){
+      try {
+        await ManagerApi.ready();
+        const text = await ManagerApi.post('mysql_ping', connData());
+        const data = JSON.parse(text);
+        saveLoginCookies();
+        setStatus(`連線成功\n${data.serverInfo}\n正在載入結構...`);
+        await loadSchema();
+      } catch (err) {
+        setStatus(ManagerApi.showError(err, 'MySQL 連線失敗'));
+      }
+    }
+
+    async function loadSchema(){
+      try {
+        await ManagerApi.ready();
+        const text = await ManagerApi.post('mysql_schema', connData());
+        const data = JSON.parse(text);
+        fillSelect($('dbSelect'), data.databases || []);
+        selectedDatabase = data.database || $('dbSelect').value || '';
+        if (selectedDatabase) $('dbSelect').value = selectedDatabase;
+        fillSelect($('tableSelect'), data.tables || []);
+        saveLoginCookies();
+        setStatus(`結構載入完成: databases=${(data.databases || []).length}, tables=${(data.tables || []).length}`);
+      } catch (err) {
+        setStatus(ManagerApi.showError(err, '讀取結構失敗'));
+      }
+    }
+
+    async function runSql(sql){
+      try {
+        await ManagerApi.ready();
+        const text = await ManagerApi.post('mysql_query', { ...connData(true), sql });
+        renderResult(JSON.parse(text));
+      } catch (err) {
+        setStatus(ManagerApi.showError(err, 'SQL 執行失敗'));
+      }
+    }
+
+    $('btnConnect').addEventListener('click', connectOnly);
+    $('btnExportAll').addEventListener('click', async () => {
+      try {
+        await ManagerApi.ready();
+        saveLoginCookies();
+        setStatus('正在匯出 SQL...');
+        const form = new URLSearchParams();
+        const data = connData(false);
+        Object.keys(data).forEach((key) => {
+          if (data[key] === undefined || data[key] === null) return;
+          form.append(key, String(data[key]));
+        });
+        const res = await fetch(ManagerApi.url('mysql_export'), {
+          method: 'POST',
+          body: form
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          setStatus(`匯出失敗\nstatus: ${res.status} ${res.statusText}\n${body}`);
+          return;
+        }
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `mysql_export_${new Date().toISOString().replaceAll(':', '-').slice(0, 19)}.sql`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
+        setStatus('匯出完成');
+      } catch (err) {
+        setStatus(ManagerApi.showError(err, '匯出失敗'));
+      }
+    });
+    $('btnRun').addEventListener('click', () => runSql($('sql').value));
+    function selectTableNow() {
+      const table = $('tableSelect').value;
+      if (!table) return;
+      $('sql').value = `SELECT * FROM \`${table.replaceAll('`', '``')}\` LIMIT 200;`;
+      runSql($('sql').value);
+    }
+    $('btnSelectTable').addEventListener('click', selectTableNow);
+    $('dbSelect').addEventListener('change', async () => {
+      selectedDatabase = $('dbSelect').value || '';
+      saveLoginCookies();
+      await loadSchema();
+      if (($('tableSelect').value || '') !== '') selectTableNow();
+    });
+    $('tableSelect').addEventListener('change', selectTableNow);
+    $('rememberPwd').addEventListener('change', saveLoginCookies);
+
+    loadLoginCookies();
+  </script>
+</body>
+</html>

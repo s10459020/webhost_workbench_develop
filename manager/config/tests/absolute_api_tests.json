@@ -1,0 +1,32 @@
+﻿{
+    "sectionName":  "Absolute Group",
+    "initScript":  "await ManagerApi.ready();\nconst workspaceRoot = (await utils.postForm(ManagerApi.url(\u0027get_root\u0027), {})).trim().replace(/\\/$/, \u0027\u0027);\nconst managerDir = new URL(window.SHV_MANAGER_URL).pathname.replace(/\\/$/, \u0027\u0027).split(\u0027/\u0027).pop();\nconst baseDirAbs = workspaceRoot + \u0027/\u0027 + managerDir + \u0027/.temp\u0027;\nreturn {\n  workspaceRoot,\n  baseDirAbs,\n  absDirName: \u0027abs-dir\u0027,\n  absDirRenamed: \u0027abs-dir-renamed\u0027,\n  absFileName: \u0027abs-file.txt\u0027,\n  absFileRenamed: \u0027abs-file-renamed.txt\u0027,\n  createDirUrl: ManagerApi.url(\u0027create_dir\u0027),\n  scanDirUrl: ManagerApi.url(\u0027scan_dir\u0027),\n  renameDirUrl: ManagerApi.url(\u0027rename_dir\u0027),\n  deleteDirUrl: ManagerApi.url(\u0027delete_dir\u0027),\n  createFileUrl: ManagerApi.url(\u0027create_file\u0027),\n  scanFileUrl: ManagerApi.url(\u0027scan_file\u0027),\n  writeFileUrl: ManagerApi.url(\u0027write_file\u0027),\n  readFileUrl: ManagerApi.url(\u0027read_file\u0027),\n  renameFileUrl: ManagerApi.url(\u0027rename_file\u0027),\n  deleteFileUrl: ManagerApi.url(\u0027delete_file\u0027),\n  message: \u0027init done: \u0027 + baseDirAbs\n};",
+    "finallyScript":  "const fileNames = [\u0027abs-file.txt\u0027, \u0027abs-file-renamed.txt\u0027];\nconst dirNames = [\u0027abs-dir\u0027, \u0027abs-dir-renamed\u0027];\nfor (const f of fileNames) {\n  try { await utils.postForm(deleteFileUrl, { path: baseDirAbs + \u0027/\u0027 + f }); } catch (_) {}\n}\nfor (const d of dirNames) {\n  try { await utils.postForm(deleteDirUrl, { path: baseDirAbs + \u0027/\u0027 + d }); } catch (_) {}\n}\nreturn { message: \u0027cleanup done\u0027 };",
+    "tests":  [
+                  {
+                      "id":  "create",
+                      "name":  "create",
+                      "scriptText":  "const dt = await utils.postForm(createDirUrl, { dir: baseDirAbs, name: absDirName });\nconst dm = dt.match(/\\[(.+?)\\/\\]/);\nassert(dm \u0026\u0026 dm[1], \u0027create_dir: parse fail\u0027);\nconst ft = await utils.postForm(createFileUrl, { dir: baseDirAbs, name: absFileName });\nconst fm = ft.match(/\\[(.+?)\\]/);\nassert(fm \u0026\u0026 fm[1], \u0027create_file: parse fail\u0027);\nreturn { dirPath: dm[1], filePath: fm[1], message: \u0027created dir + file\u0027 };"
+                  },
+                  {
+                      "id":  "write_read",
+                      "name":  "write_read",
+                      "scriptText":  "await utils.postForm(writeFileUrl, { path: filePath, content: \u0027absolute test content\u0027 });\nconst text = await utils.postForm(readFileUrl, { path: filePath });\nassert(text.includes(\u0027absolute test content\u0027), \u0027write_read: content mismatch\u0027);\nreturn { message: \u0027write/read ok\u0027 };"
+                  },
+                  {
+                      "id":  "scan",
+                      "name":  "scan",
+                      "scriptText":  "const dirs = JSON.parse((await utils.postForm(scanDirUrl, { path: baseDirAbs })) || \u0027[]\u0027);\nconst files = JSON.parse((await utils.postForm(scanFileUrl, { path: baseDirAbs })) || \u0027[]\u0027);\nassert(Array.isArray(dirs), \u0027scan: dirs not array\u0027);\nassert(Array.isArray(files), \u0027scan: files not array\u0027);\nconst dirNames = dirs.map(x =\u003e x.name);\nconst fileNames = files.map(x =\u003e x.name);\nassert(dirNames.includes(absDirName), \u0027scan: dir missing\u0027);\nassert(fileNames.includes(absFileName), \u0027scan: file missing\u0027);\nreturn { message: \u0027scan ok\u0027 };"
+                  },
+                  {
+                      "id":  "rename",
+                      "name":  "rename",
+                      "scriptText":  "const dt = await utils.postForm(renameDirUrl, { path: dirPath + \u0027/\u0027, name: absDirRenamed });\nconst dm = dt.match(/to \\[(.+?)\\/\\]/);\nassert(dm \u0026\u0026 dm[1], \u0027rename dir: parse fail\u0027);\nconst ft = await utils.postForm(renameFileUrl, { path: filePath, name: absFileRenamed });\nconst fm = ft.match(/to \\[(.+?)\\]/);\nassert(fm \u0026\u0026 fm[1], \u0027rename file: parse fail\u0027);\nreturn { dirPath: dm[1], filePath: fm[1], message: \u0027renamed both\u0027 };"
+                  },
+                  {
+                      "id":  "delete",
+                      "name":  "delete",
+                      "scriptText":  "await utils.postForm(deleteFileUrl, { path: filePath });\nawait utils.postForm(deleteDirUrl, { path: dirPath + \u0027/\u0027 });\nconst dirs = JSON.parse((await utils.postForm(scanDirUrl, { path: baseDirAbs })) || \u0027[]\u0027);\nconst files = JSON.parse((await utils.postForm(scanFileUrl, { path: baseDirAbs })) || \u0027[]\u0027);\nassert(Array.isArray(dirs), \u0027delete verify: dirs not array\u0027);\nassert(Array.isArray(files), \u0027delete verify: files not array\u0027);\nconst dirNames = dirs.map(x =\u003e x.name);\nconst fileNames = files.map(x =\u003e x.name);\nassert(!dirNames.includes(utils.basename(dirPath)), \u0027delete verify: dir still exists\u0027);\nassert(!fileNames.includes(utils.basename(filePath)), \u0027delete verify: file still exists\u0027);\nreturn { message: \u0027deleted + verified\u0027 };"
+                  }
+              ]
+}

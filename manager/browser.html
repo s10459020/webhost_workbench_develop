@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Browser</title>
+  <style>
+    :root{--bg:#f2f5fb;--card:#fff;--line:#d7e2f3;--text:#1f2a37;--muted:#58657a}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:"Segoe UI","Noto Sans TC",sans-serif;background:var(--bg);color:var(--text)}
+    .top-nav{position:sticky;top:0;z-index:1000;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:12px 14px}
+    .home-banner{display:block;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:linear-gradient(135deg,#eef5ff,#f8fbff);color:var(--text);font-size:30px;text-decoration:none;font-weight:600}
+    .wrap{width:min(1200px,94%);margin:18px auto 24px}
+    .toolbar,.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+    .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .url-input{flex:1;min-width:280px;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-family:ui-monospace,Consolas,monospace}
+    .muted{color:var(--muted)}
+    button{border:1px solid #c8d4ea;background:#fff;border-radius:9px;padding:7px 11px;cursor:pointer}
+    #frame{width:100%;height:72vh;border:1px solid var(--line);border-radius:10px;background:#fff}
+  </style>
+</head>
+<body>
+  <div class="top-nav"><a class="home-banner" href="index.html">Browser</a></div>
+  <main class="wrap">
+    <section class="toolbar">
+      <span class="muted">網址:</span>
+      <input id="urlInput" class="url-input" type="text" placeholder="https://example.com">
+      <button id="btnGo" type="button">前往</button>
+      <button id="btnReload" type="button">重整</button>
+    </section>
+    <section class="panel">
+      <iframe id="frame" referrerpolicy="no-referrer"></iframe>
+    </section>
+  </main>
+  <script>
+    const urlInput = document.getElementById('urlInput');
+    const frame = document.getElementById('frame');
+    const q = new URLSearchParams(location.search);
+
+    function normalizeUrl(raw){
+      const text = String(raw || '').trim();
+      if (!text) return '';
+      if (/^https?:\/\//i.test(text)) return text;
+      return `https://${text}`;
+    }
+
+    function openUrl(raw){
+      const url = normalizeUrl(raw);
+      if (!url) {
+        alert('請輸入網址');
+        return;
+      }
+      urlInput.value = url;
+      frame.src = url;
+      const next = new URLSearchParams(location.search);
+      next.set('url', url);
+      history.replaceState(null, '', `${location.pathname}?${next.toString()}`);
+    }
+
+    document.getElementById('btnGo').addEventListener('click', () => openUrl(urlInput.value));
+    document.getElementById('btnReload').addEventListener('click', () => {
+      if (!frame.src) return;
+      frame.src = frame.src;
+    });
+    urlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') openUrl(urlInput.value);
+    });
+
+    const initUrl = normalizeUrl(q.get('url') || '');
+    if (initUrl) openUrl(initUrl);
+  </script>
+</body>
+</html>

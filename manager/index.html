@@ -1,0 +1,240 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>SHV Home</title>
+  <style>
+    :root {
+      --bg-1: #f4efe6;
+      --bg-2: #dfe9f5;
+      --card: #ffffff;
+      --text: #1f2a37;
+      --muted: #526070;
+      --line: #d7deea;
+      --accent: #1f6feb;
+      --accent-2: #0f4fb8;
+      --shadow: 0 12px 32px rgba(20, 39, 77, 0.14);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", "Noto Sans TC", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(900px 500px at 12% 10%, #fff7dd 0%, transparent 60%),
+        radial-gradient(700px 420px at 88% 16%, #dcefff 0%, transparent 55%),
+        linear-gradient(135deg, var(--bg-1), var(--bg-2));
+    }
+
+    .wrap {
+      width: min(1080px, 92%);
+      margin: 42px auto;
+    }
+
+    .title {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 5vw, 44px);
+      letter-spacing: 0.2px;
+    }
+
+    .subtitle {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .server-panel {
+      margin: 0 0 18px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .server-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .server-label {
+      font-weight: 700;
+    }
+
+    .server-select {
+      min-width: 180px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--text);
+      background: #ffffff;
+      font: inherit;
+    }
+
+    .server-button {
+      padding: 8px 14px;
+      border: 0;
+      border-radius: 8px;
+      color: #ffffff;
+      background: var(--accent-2);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .server-note {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-3px);
+      border-color: #b9c8e2;
+      box-shadow: 0 16px 38px rgba(20, 39, 77, 0.2);
+    }
+
+    .badge {
+      display: inline-block;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: #ffffff;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      border-radius: 999px;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .card p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1 class="title">SHV Homepage</h1>
+    <p class="subtitle">選擇要進入的功能頁面</p>
+    <section class="server-panel" aria-live="polite">
+      <form class="server-row" id="serverForm">
+        <span class="server-label">當前使用版本:</span>
+        <select class="server-select" id="activeVersion"></select>
+        <button class="server-button" type="submit">套用</button>
+      </form>
+      <p class="server-note" id="serverNote">版本設定由 manager/config/server.json 提供。</p>
+    </section>
+    <section class="grid">
+      <a class="card" href="explorer.html">
+        <span class="badge home-banner">V3</span>
+        <h2>Web Explorer</h2>
+        <p>單一版本入口（統一使用 type2/scan2/read2）。</p>
+      </a>
+
+      <a class="card" href="tests.html">
+        <span class="badge home-banner">Tests</span>
+        <h2>API Tests</h2>
+        <p>逐行執行並顯示 file API 測試狀態，可直接編輯測試腳本。</p>
+      </a>
+
+      <a class="card" href="info.html">
+        <span class="badge home-banner">Info</span>
+        <h2>PHP Info</h2>
+        <p>檢視當前 PHP/Server/限制參數，方便對照 phpinfo 與環境設定。</p>
+      </a>
+
+      <a class="card" href="preview.html">
+        <span class="badge home-banner">Preview</span>
+        <h2>Preview</h2>
+        <p>進入 Preview 頁面後可動態修改 path。</p>
+      </a>
+
+      <a class="card" href="browser.html">
+        <span class="badge home-banner">Browser</span>
+        <h2>Browser</h2>
+        <p>輸入網址後在下方內嵌瀏覽頁面內容。</p>
+      </a>
+
+      <a class="card" href="mysql.html">
+        <span class="badge home-banner">MySQL</span>
+        <h2>MySQL</h2>
+        <p>輸入連線資訊後預覽資料庫、資料表與 SQL 查詢結果。</p>
+      </a>
+
+      <a class="card" href="ftp.html">
+        <span class="badge home-banner">FTP</span>
+        <h2>FTP</h2>
+        <p>連線 FTP 後可瀏覽、上傳、下載、刪除遠端檔案。</p>
+      </a>
+
+      <a class="card" href="cmd.html">
+        <span class="badge home-banner">CMD</span>
+        <h2>Command</h2>
+        <p>透過封裝 API 執行主機命令，顯示輸出與結束代碼。</p>
+      </a>
+    </section>
+  </main>
+  <script src="js/server_config.js?v=20260514a"></script>
+  <script>
+    const activeVersionEl = document.getElementById("activeVersion");
+    const serverNoteEl = document.getElementById("serverNote");
+
+    async function loadServerConfig() {
+      const config = await window.SHV.loadServerConfig({ reload: true });
+      activeVersionEl.innerHTML = config.allowedVersions.map((x) => `<option value="${x.version}">${x.version}</option>`).join("");
+      activeVersionEl.value = config.active?.version || config.allowedVersions[0].version;
+    }
+
+    document.getElementById("serverForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await window.SHV.setActiveServer(activeVersionEl.value);
+      serverNoteEl.textContent = `已切換為 ${activeVersionEl.value}`;
+    });
+
+    document.querySelectorAll(".home-banner").forEach((el) => {
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.location.href = "./index.html";
+      });
+    });
+
+    loadServerConfig();
+  </script>
+</body>
+</html>

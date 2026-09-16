@@ -1,0 +1,62 @@
+﻿{
+    "sectionName":  "FTP Probe",
+    "initScript":  "await ManagerApi.ready();\nassert(ftpHost, \u0027ftpHost is required\u0027);\nreturn { message: \u0027init done\u0027 };",
+    "finallyScript":  "return { message: \u0027probe done\u0027 };",
+    "tests":  [
+                  {
+                      "id":  "probe_snapshot",
+                      "name":  "probe snapshot",
+                      "scriptText":  "const raw = await ManagerApi.call(\u0027ftp_probe\u0027, { host: ftpHost, user: ftpUser || \u0027\u0027, pass: ftpPassword || \u0027\u0027 });\nconst data = JSON.parse(raw || \u0027{}\u0027);\nreturn {\n  probeRaw: raw,\n  message: `snapshot captured`\n};"
+                  },
+                  {
+                      "id":  "port21",
+                      "name":  "test port 21",
+                      "scriptText":  "const data = JSON.parse(probeRaw || \u0027{}\u0027);\nconst p21 = data?.ports?.[\u002721\u0027];\nreturn {\n  port21Open: !!p21?.open,\n  message: p21?.open ? `21 open, banner=${p21?.banner || \u0027(empty)\u0027}` : `21 closed, reason=${p21?.error || \u0027(unknown)\u0027}`\n};"
+                  },
+                  {
+                      "id":  "feat_21",
+                      "name":  "FEAT on 21",
+                      "scriptText":  "if (!port21Open) return { message: \u0027pass: port 21 is closed, skip FEAT test\u0027 };\nconst data = JSON.parse(probeRaw || \u0027{}\u0027);\nconst feat = data?.feat?.response || \u0027(empty)\u0027;\nreturn { message: `FEAT response=${feat}` };"
+                  },
+                  {
+                      "id":  "user_before_after_auth",
+                      "name":  "login test (with/without TLS)",
+                      "scriptText":  "if (!port21Open) return { message: \u0027pass: port 21 is closed, skip login test\u0027 };\nif (!ftpUser || !ftpPassword) return { message: \u0027pass: ftpUser/ftpPassword not provided, skip login test\u0027 };\nconst data = JSON.parse(probeRaw || \u0027{}\u0027);\nconst plain = data?.login_plain || {};\nconst tls = data?.login_tls || {};\nconst authSupported = !!(data?.auth_tls?.supported);\nconst plainText = `plain=${plain?.ok?\u0027ok\u0027:\u0027fail\u0027}; USER=${plain?.user_response || \u0027(empty)\u0027}; PASS=${plain?.pass_response || \u0027(empty)\u0027}`;\nif (!authSupported || !tls?.tested) return { message: plainText + \u0027; TLS login=pass(not tested)\u0027 };\nconst tlsText = `TLS=${tls?.ok?\u0027ok\u0027:\u0027fail\u0027}; USER=${tls?.user_response || \u0027(empty)\u0027}; PASS=${tls?.pass_response || \u0027(empty)\u0027}`;\nreturn { message: plainText + \u0027; \u0027 + tlsText };"
+                  },
+                  {
+                      "id":  "auth_tls_21",
+                      "name":  "AUTH TLS on 21",
+                      "scriptText":  "if (!port21Open) return { authTlsSupported: false, authTlsState: \u0027skip\u0027, message: \u0027pass: port 21 is closed, skip AUTH TLS test\u0027 };\nconst data = JSON.parse(probeRaw || \u0027{}\u0027);\nconst auth = data?.auth_tls || {};\nconst state = auth?.state || (auth?.supported ? \u0027supported\u0027 : \u0027unknown\u0027);\nreturn {\n  authTlsSupported: !!auth?.supported,\n  authTlsState: state,\n  message: `AUTH TLS state=${state}, response=${auth?.response || \u0027(empty)\u0027}`\n};"
+                  },
+                  {
+                      "id":  "tls_handshake_21",
+                      "name":  "TLS handshake on 21",
+                      "scriptText":  "if (!port21Open) return { tls21Ok: false, message: \u0027pass: port 21 is closed, skip TLS handshake test\u0027 };\nif (!authTlsSupported) {\n  if (authTlsState === \u0027need_login\u0027) return { tls21Ok: false, message: \u0027pass: AUTH TLS requires login first, skip TLS handshake test\u0027 };\n  return { tls21Ok: false, message: \u0027pass: AUTH TLS unsupported/unknown, skip TLS handshake test\u0027 };\n}\nconst data = JSON.parse(probeRaw || \u0027{}\u0027);\nconst t = data?.tls_on_21;\nreturn {\n  tls21Ok: !!t?.ok,\n  message: `TLS21=${t?.ok?\u0027ok\u0027:\u0027fail\u0027}, detail=${t?.error || \u0027(none)\u0027}`\n};"
+                  },
+                  {
+                      "id":  "port990",
+                      "name":  "test port 990",
+                      "scriptText":  "const data = JSON.parse(probeRaw || \u0027{}\u0027);\nconst p = data?.ports?.[\u0027990\u0027];\nreturn {\n  port990Open: !!p?.open,\n  message: p?.open ? \u0027990 open\u0027 : `990 closed, reason=${p?.error || \u0027(unknown)\u0027}`\n};"
+                  },
+                  {
+                      "id":  "tls_990",
+                      "name":  "TLS handshake on 990",
+                      "scriptText":  "if (!port990Open) return { tls990Ok: false, message: \u0027pass: port 990 is closed, skip TLS990 test\u0027 };\nconst data = JSON.parse(probeRaw || \u0027{}\u0027);\nconst t = data?.tls_on_990;\nreturn {\n  tls990Ok: !!t?.ok,\n  message: `TLS990=${t?.ok?\u0027ok\u0027:\u0027fail\u0027}, detail=${t?.error || \u0027(none)\u0027}`\n};"
+                  },
+                  {
+                      "id":  "port22",
+                      "name":  "test port 22",
+                      "scriptText":  "const data = JSON.parse(probeRaw || \u0027{}\u0027);\nconst p = data?.ports?.[\u002722\u0027];\nreturn {\n  port22Open: !!p?.open,\n  message: p?.open ? \u002722 open\u0027 : `22 closed, reason=${p?.error || \u0027(unknown)\u0027}`\n};"
+                  },
+                  {
+                      "id":  "ssh_banner_22",
+                      "name":  "SSH banner on 22",
+                      "scriptText":  "if (!port22Open) return { isSsh22: false, message: \u0027pass: port 22 is closed, skip SSH banner test\u0027 };\nconst data = JSON.parse(probeRaw || \u0027{}\u0027);\nconst p = data?.ports?.[\u002722\u0027];\nreturn {\n  isSsh22: !!p?.is_ssh,\n  message: `22 banner=${p?.banner || \u0027(empty)\u0027}, is_ssh=${p?.is_ssh?\u0027yes\u0027:\u0027no\u0027}`\n};"
+                  },
+                  {
+                      "id":  "summary",
+                      "name":  "summary available services",
+                      "scriptText":  "const available = [];\nif (port21Open \u0026\u0026 authTlsSupported \u0026\u0026 tls21Ok) available.push(\u0027ftps_explicit\u0027);\nif (port21Open \u0026\u0026 authTlsState === \u0027need_auth_first\u0027) available.push(\u0027ftps_explicit(candidate)\u0027);\nif (port21Open \u0026\u0026 (!authTlsSupported || authTlsState === \u0027need_login\u0027 || authTlsState === \u0027unknown\u0027)) available.push(\u0027ftp\u0027);\nif (port990Open \u0026\u0026 tls990Ok) available.push(\u0027ftps_implicit\u0027);\nif (port22Open \u0026\u0026 isSsh22) available.push(\u0027sftp\u0027);\nconst uniq = [...new Set(available)];\nreturn { message: `available=${uniq.join(\u0027,\u0027) || \u0027(none)\u0027}` };"
+                  }
+              ]
+}

@@ -1,0 +1,1034 @@
+<html>
+	<head>
+		<title>Explorer</title>
+		<meta charset="utf-8">
+		<meta http-equiv="Expires" content="0">
+		<meta http-equiv="Pragma" content="no-cache">
+		<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+		<script src="https://code.jquery.com/jquery.min.js"></script>
+		<script src="js/server_config.js?v=20260514-6"></script>
+		<script src="js/api.js?v=20260514-6"></script>
+		<script src="js/preview/markdown_preview.js"></script>
+		<style>
+			:root{
+				--bg: #eef2f7;
+				--card: #ffffff;
+				--line: #d7dde8;
+				--text: #1e293b;
+				--muted: #64748b;
+				--primary: #2563eb;
+				--primary-soft: #dbeafe;
+				--dir-bg: #fff6db;
+				--dir-bd: #f4dea0;
+				--file-bg: #eef5ff;
+				--file-bd: #c8daf8;
+			}
+			body{
+				margin: 0;
+				font-family: "Segoe UI", "Noto Sans TC", sans-serif;
+				background: radial-gradient(1200px 500px at 20% -10%, #e9f2ff, transparent), var(--bg);
+				color: var(--text);
+			}
+			.page-wrap{
+				width: min(1320px, 96%);
+				margin: 14px auto 20px;
+			}
+			.top-nav{
+				position: sticky;
+				top: 0;
+				z-index: 9999;
+				background: rgba(255,255,255,.96);
+				backdrop-filter: blur(6px);
+				border-bottom: 1px solid var(--line);
+				padding: 10px 14px;
+			}
+			.home-banner{
+				display: block;
+				padding: 10px 14px;
+				border-radius: 8px;
+				border: 1px solid var(--line);
+				background: #f8fafc;
+				color: var(--text);
+				font-size: 20px;
+				text-decoration: none;
+				font-weight: 600;
+				letter-spacing: 0;
+			}
+			#view > iframe{
+				width: 100%;
+				height: 360px;
+				display: block;
+				border: 1px solid var(--line);
+				border-radius: 10px;
+				background: #fff;
+			}
+			#edit > textarea{
+				width: 100%;
+				height: 360px;
+				border: 1px solid var(--line);
+				border-radius: 10px;
+				padding: 10px;
+				box-sizing: border-box;
+				font-family: ui-monospace, Consolas, "Courier New", monospace;
+			}
+			#drop{
+				position: relative;
+				border: 2px dashed #c8d4ea;
+				background: #fafdff;
+				min-height: 80px;
+				list-style: none;
+				padding: 8px;
+				margin: 8px 0 0;
+				border-radius: 12px;
+			}
+			#drop.cover{
+				border: 2px dashed var(--primary);
+				background: #eaf2ff;
+			}
+			.toolbar-card,
+			.content-card{
+				background: var(--card);
+				border: 1px solid var(--line);
+				border-radius: 10px;
+				padding: 12px;
+				margin-bottom: 10px;
+				box-shadow: 0 1px 3px rgba(15,23,42,.06);
+			}
+			.toolbar-card{
+				display: grid;
+				gap: 10px;
+			}
+			.toolbar-actions{
+				display: flex;
+				flex-wrap: wrap;
+				gap: 8px;
+			}
+			.path-row{
+				display: flex;
+				gap: 8px;
+				align-items: center;
+			}
+			.path-row input{
+				flex: 1;
+				border: 1px solid var(--line);
+				border-radius: 10px;
+				padding: 9px 10px;
+				font-size: 14px;
+			}
+			.breadcrumb{
+				display: flex;
+				flex-wrap: wrap;
+				gap: 6px;
+				padding: 8px;
+				border: 1px dashed var(--line);
+				border-radius: 10px;
+				background: #fbfdff;
+			}
+			.breadcrumb button{
+				padding: 4px 8px;
+				font-size: 12px;
+				border-radius: 999px;
+				background: var(--primary-soft);
+				border-color: #c9dbff;
+				color: #15306c;
+			}
+			.content-card{
+				display: grid;
+				grid-template-columns: minmax(540px, 2fr) minmax(360px, 1fr);
+				gap: 10px;
+				align-items: start;
+			}
+			.panel{
+				background: #fff;
+				border: 1px solid #e5eaf2;
+				border-radius: 10px;
+				padding: 10px;
+				overflow: hidden;
+			}
+			button{
+				border: 1px solid #c8d4ea;
+				background: #fff;
+				border-radius: 9px;
+				padding: 7px 11px;
+				cursor: pointer;
+				transition: .18s ease;
+			}
+			button:hover{
+				transform: translateY(-1px);
+				border-color: #9bb4de;
+				box-shadow: 0 3px 10px rgba(21,42,88,.08);
+			}
+			#drop li{
+				display: grid;
+				grid-template-columns: 24px minmax(260px, 1fr) 100px 70px 70px;
+				gap: 8px;
+				align-items: center;
+				margin: 0;
+				padding: 7px 8px;
+				border-radius: 0;
+				border-bottom: 1px solid #eef2f7;
+			}
+			#drop li:hover{
+				background: #f8fbff;
+			}
+			.item-name{
+				display: inline-block;
+				min-width: 0;
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				padding: 7px 9px;
+				border-radius: 8px;
+				border: 1px solid transparent;
+			}
+			.item-name.dir{
+				background: var(--dir-bg);
+				border-color: var(--dir-bd);
+				font-weight: 600;
+			}
+			.item-name.file{
+				background: var(--file-bg);
+				border-color: var(--file-bd);
+			}
+			.item-name:hover{
+				filter: brightness(.98);
+			}
+			.panel-title{
+				margin: 0 0 8px;
+				font-size: 14px;
+				color: var(--muted);
+				font-weight: 600;
+			}
+			.list-header{
+				display: grid;
+				grid-template-columns: 24px minmax(260px, 1fr) 100px 70px 70px;
+				gap: 8px;
+				font-size: 12px;
+				color: var(--muted);
+				padding: 7px 8px;
+				border: 1px solid #e9edf5;
+				border-radius: 8px;
+				background: #f8fafc;
+				margin-top: 8px;
+				margin-bottom: 6px;
+			}
+			.col-size{
+				color: var(--muted);
+				font-size: 12px;
+				text-align: right;
+			}
+			.item-check{
+				width: 16px;
+				height: 16px;
+				margin: 0;
+			}
+			@media (max-width: 980px){
+				.content-card{
+					grid-template-columns: 1fr;
+				}
+			}
+		</style>
+	</head>
+	<body onload="boot()">
+		<div class="top-nav">
+			<a class="home-banner" href="index.html">Explorer</a>
+		</div>
+		<main class="page-wrap">
+		
+		<div class="toolbar-card">
+			<div class="toolbar-actions">
+				<button onclick="pathBack(currentPath)">上一頁</button>
+				<button onclick="read(joinPath(currentPath, '..'))">上層</button>
+				<button onclick="resetExplorer()">重置</button>
+				<button onclick="openDiff(currentPath)">Diff</button>
+				<button id="btnToggleSelectAll" onclick="toggleSelectAll()">全選</button>
+				<button id="btnDownloadCurrent" onclick="download(currentPath)">下載當前項目</button>
+			</div>
+			<div class="path-row">
+				<label for="path">實體路徑</label>
+				<input id="path" type="text" onkeydown="onPathEnter(event)" onblur="read(this.value)"/>
+			</div>
+			<div id="breadcrumb" class="breadcrumb"></div>
+		</div>
+		
+		<div class="content-card">
+			<div id="list" class="panel">
+				<p class="panel-title">檔案清單 (可拖放上傳)</p>
+				<button onclick="create(currentPath, 'dir')"> + 新資料夾</button>
+				<button onclick="create(currentPath, 'file')"> + 新文件</button>
+				<div class="list-header">
+					<span></span><span>名稱</span><span class="col-size">大小</span><span>更名</span><span>刪除</span>
+				</div>
+				<ul id="drop"></ul>
+			</div>
+			<div id="view" class="panel">
+				<p class="panel-title">預覽</p>
+				<button onclick="edit(currentPath)">編輯</button>
+				<iframe id="frame"></iframe>
+			</div>
+			<div id="edit" class="panel">
+				<p class="panel-title">編輯器</p>
+				<button onclick="save(currentPath)">儲存</button>
+				<button onclick="read(currentPath)">取消</button>
+				<textarea></textarea>
+			</div>
+		</div>
+		</main>
+		
+		<template id="item">
+			<li width="100%" path="replace with file path">
+				<input class="item-check" type="checkbox">
+				<span>[文件名稱]</span>
+				<span class="col-size">-</span>
+				<button onclick="rename(this.parentNode.path, this.parentNode.type)">更名</button>
+				<button onclick="remove(this.parentNode.path, this.parentNode.type)">刪除</button>
+			</li>
+		</template>
+		
+		<script>
+			// global varable
+			let currentPath = "";
+			let workspaceRootAbs = '';
+						
+			// api
+			let rootApi = '';
+			let typeApi = '';
+			let dirScanApi = '';
+			let dirCreateApi = '';
+			let dirDeleteApi = '';
+			let dirRenameApi = '';
+			let fileScanApi = '';
+			let fileReadApi = '';
+			let fileWriteApi = '';
+			let fileCreateApi = '';
+			let fileDeleteApi = '';
+			let fileRenameApi = '';
+			let filePreviewApi = '';
+			let fileUploadsApi = '';
+			const APP_SCOPE = location.pathname.replace(/\/[^\/]*$/, '').replace(/[^A-Za-z0-9_-]+/g, '_') || 'manager';
+			const EXPLORER_PATH_COOKIE = `${APP_SCOPE}_explorer_path_v1`;
+
+			function applyApiEndpoints(){
+				rootApi = ManagerApi.url('get_root');
+				typeApi = ManagerApi.url('get_path_type');
+				dirScanApi = ManagerApi.url('scan_dir');
+				dirCreateApi = ManagerApi.url('create_dir');
+				dirDeleteApi = ManagerApi.url('delete_dir');
+				dirRenameApi = ManagerApi.url('rename_dir');
+				fileScanApi = ManagerApi.url('scan_file');
+				fileReadApi = ManagerApi.url('read_file');
+				fileWriteApi = ManagerApi.url('write_file');
+				fileCreateApi = ManagerApi.url('create_file');
+				fileDeleteApi = ManagerApi.url('delete_file');
+				fileRenameApi = ManagerApi.url('rename_file');
+				filePreviewApi = ManagerApi.url('preview_file');
+				fileUploadsApi = ManagerApi.url('upload_files');
+			}
+
+			function isAbsDrivePath(path){
+				return /^[A-Za-z]:\//.test(String(path || '').replace(/\\/g, '/'));
+			}
+			function splitPhysicalPath(path){
+				const raw = String(path || '').replace(/\\/g, '/').trim();
+				if (raw === '') return null;
+				let p = raw;
+				if (/^\/[A-Za-z]:($|\/)/.test(p)) p = p.slice(1);
+				if (isAbsDrivePath(p)) {
+					const drive = p.slice(0, 2).toUpperCase();
+					const tail = p.slice(2).replace(/^\/+/, '');
+					const segs = tail.split('/').filter(Boolean);
+					return { kind: 'drive', root: `${drive}/`, key: drive.toLowerCase(), segs };
+				}
+				if (p.startsWith('/')) {
+					const segs = p.slice(1).split('/').filter(Boolean);
+					return { kind: 'unix', root: '/', key: '/', segs };
+				}
+				return null;
+			}
+			function joinPhysicalPath(kind, root, segs){
+				if (kind === 'drive') return segs.length ? `${root}${segs.join('/')}` : root;
+				return segs.length ? `/${segs.join('/')}` : '/';
+			}
+			function formatApiPath(info){
+				if (!info) return '';
+				const joined = joinPhysicalPath(info.kind, info.root, info.segs);
+				return info.kind === 'drive' ? `/${joined}` : joined;
+			}
+			function normalizePhysicalPath(path){
+				let raw = String(path ?? '').replace(/\\/g, '/').trim();
+				if (raw === '') return '';
+				if (isAbsDrivePath(raw)) raw = '/' + raw;
+				const info = splitPhysicalPath(raw);
+				if (!info) return '';
+				return formatApiPath(info);
+			}
+			function normalizePath(path){
+				return normalizePhysicalPath(path);
+			}
+			function joinPath(base, name){
+				const n = String(name || '').replace(/\\/g, '/').trim();
+				if (!n) return normalizePhysicalPath(base);
+				const absName = normalizePhysicalPath(n);
+				if (absName) return absName;
+				const baseInfo = splitPhysicalPath(base);
+				if (!baseInfo) return '';
+				const out = [...baseInfo.segs];
+				for (const part of n.split('/')) {
+					if (!part || part === '.') continue;
+					if (part === '..') {
+						if (out.length > 0) out.pop();
+						continue;
+					}
+					out.push(part);
+				}
+				return formatApiPath({ kind: baseInfo.kind, root: baseInfo.root, segs: out });
+			}
+			function formatFolderSize(bytes){
+				const n = Number(bytes) || 0;
+				if (n < 1024) return `${n} B`;
+				if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+				if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+				return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+			}
+			function escapeHtml(text){
+				return String(text)
+					.replaceAll('&', '&amp;')
+					.replaceAll('<', '&lt;')
+					.replaceAll('>', '&gt;')
+					.replaceAll('"', '&quot;')
+					.replaceAll("'", '&#39;');
+			}
+			function setCookie(name, value, days = 30){
+				const d = new Date();
+				d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+				document.cookie = `${name}=${encodeURIComponent(value)}; expires=${d.toUTCString()}; path=/; SameSite=Lax`;
+			}
+			function deleteCookie(name){
+				document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+			}
+			function getCookie(name){
+				const key = `${name}=`;
+				const arr = document.cookie.split(';');
+				for (const raw of arr){
+					const c = raw.trim();
+					if (c.startsWith(key)) return decodeURIComponent(c.substring(key.length));
+				}
+				return '';
+			}
+			function saveCurrentPath(path){
+				setCookie(EXPLORER_PATH_COOKIE, normalizePath(path));
+			}
+			function parentDir(path){
+				const info = splitPhysicalPath(path);
+				if (!info) return '';
+				if (info.segs.length > 0) info.segs.pop();
+				return formatApiPath(info);
+			}
+			function getStartupPath(){
+				const q = new URLSearchParams(window.location.search);
+				if (q.has('path')) return normalizePath(q.get('path') || '');
+				const saved = getCookie(EXPLORER_PATH_COOKIE);
+				return saved ? normalizePath(saved) : normalizePath(workspaceRootAbs);
+			}
+			function pageUrl(page, params = {}){
+				const q = new URLSearchParams(window.location.search);
+				Object.entries(params).forEach(([key, value]) => {
+					if (value === undefined || value === null || value === '') q.delete(key);
+					else q.set(key, String(value));
+				});
+				const query = q.toString();
+				return `${page}${query ? `?${query}` : ''}`;
+			}
+			function resetExplorer(){
+				deleteCookie(EXPLORER_PATH_COOKIE);
+				read(workspaceRootAbs);
+			}
+			async function boot(){
+				try{
+					await ManagerApi.ready();
+					applyApiEndpoints();
+					workspaceRootAbs = normalizePath(await $.post(rootApi, {}));
+				}catch(_){
+					workspaceRootAbs = '';
+				}
+				initialDrop();
+				read(getStartupPath());
+			}
+			
+			function initialPath(){
+				let filePath = window.location.pathname;
+				let dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
+				return dirPath
+			}
+			function onPathEnter(event){
+				if(event.key === 'Enter'){
+					read(event.target.value);
+				}
+			}
+			function clearExplorerContent(){
+				const listDom = $('#list').find('ul');
+				const frameDom = $('#view').find('iframe');
+				const editDom = $('#edit').find('textarea');
+				listDom.empty();
+				frameDom.attr('src', '');
+				frameDom.attr('srcdoc', '');
+				editDom.val('');
+			}
+			function selectedRows(){
+				const out = [];
+				$('#drop li').each((_, el) => {
+					const checked = $(el).find('.item-check').prop('checked');
+					if (!checked) return;
+					out.push({
+						path: String(el.path || ''),
+						rel: String(el.rel || ''),
+						type: String(el.type || '')
+					});
+				});
+				return out.filter(x => x.path && x.type);
+			}
+			function updateSelectionUi(){
+				const selected = selectedRows();
+				const total = $('#drop li').length;
+				const count = selected.length;
+				const btnDownload = document.getElementById('btnDownloadCurrent');
+				const btnToggle = document.getElementById('btnToggleSelectAll');
+				if (btnDownload) btnDownload.textContent = count > 0 ? `下載勾選項目 (${count})` : '下載當前項目';
+				if (btnToggle) btnToggle.textContent = (total > 0 && count === total) ? '重置勾選' : '全選';
+			}
+			function toggleSelectAll(){
+				const rows = $('#drop li');
+				if (!rows.length) return;
+				let allChecked = true;
+				rows.each((_, el) => {
+					if (!$(el).find('.item-check').prop('checked')) allChecked = false;
+				});
+				rows.each((_, el) => {
+					$(el).find('.item-check').prop('checked', !allChecked);
+				});
+				updateSelectionUi();
+			}
+			function renderBreadcrumb(path){
+				const dom = $('#breadcrumb');
+				dom.empty();
+				const info = splitPhysicalPath(path);
+				if (!info) return;
+				const rootLabel = info.kind === 'drive' ? `/${info.root}` : '/';
+				const rootBtn = $(`<button type="button">${rootLabel}</button>`);
+				rootBtn.on('click', () => read(formatApiPath({ kind: info.kind, root: info.root, segs: [] })));
+				dom.append(rootBtn);
+				const acc = [];
+				info.segs.forEach((seg) => {
+					acc.push(seg);
+					const btn = $(`<button type="button">${seg}</button>`);
+					const target = formatApiPath({ kind: info.kind, root: info.root, segs: [...acc] });
+					btn.on('click', () => read(target));
+					dom.append(btn);
+				});
+			}
+
+			function initialDrop(){
+				let dropDom = $('#drop')
+				dropDom.on("dragover", e => {
+					e.preventDefault();
+					dropDom.addClass('cover')
+				});
+				dropDom.on("dragleave", e => {
+					e.preventDefault();
+					e.preventDefault();
+					dropDom.removeClass('cover')
+				});
+				dropDom.on("drop", e => {
+					e.preventDefault();
+					e.stopPropagation();
+					dropDom.removeClass('cover')
+					drop(e.originalEvent.dataTransfer, currentPath)
+				});
+			}
+			
+			function pathBack(path){
+				read(parentDir(path))
+			}
+			
+			function extractEmpty(path){
+				tokens = path.split('/')
+				buffer = tokens.pop()
+				
+				tokens = tokens.filter(t => t != '')
+				tokens.push(buffer)
+				
+				return tokens.join('/')
+			}
+			
+			function extractDotDot(path){
+				buffer = []
+				tokens = path.split('/')
+				tokens.forEach(token => {
+					if(token == '..' && buffer.length > 0 && buffer[buffer.length-1] != '..'){
+						buffer.pop()
+					}else{
+						buffer.push(token)
+					}
+				})
+				return buffer.join('/')
+			}
+			function alwaysHaveRoot(path){
+				return path[0] == "/" 
+					? path 
+					: '/'+path
+			}
+			
+			async function read(path){
+				let pathDom = $('#path')
+				let listDom = $('#list')
+				let viewDom = $('#view')
+				let editDom = $('#edit')
+				
+				path = normalizePath(path)
+				if (!path) {
+					path = normalizePath(workspaceRootAbs)
+				}
+				if (!path) {
+					clearExplorerContent()
+					listDom.show()
+					viewDom.hide()
+					editDom.hide()
+					return
+				}
+				currentPath = path
+				pathDom.val(path)
+				renderBreadcrumb(path)
+				console.log(path)
+				
+				let type = ''
+				try{
+					type = await $.post(typeApi, {path: path})
+				}catch(err){
+					clearExplorerContent()
+					listDom.show()
+					viewDom.hide()
+					editDom.hide()
+					console.warn('read path fail', path, err)
+					return
+				}
+				switch(type){
+					case 'dir':
+						saveCurrentPath(path)
+						readDir(path)
+						listDom.show()
+						viewDom.hide()
+						editDom.hide()
+						break;
+					case 'file':
+						saveCurrentPath(parentDir(path))
+						window.location.href = pageUrl('preview.html', { path, from: 'explorer' });
+						break;
+					default:
+						clearExplorerContent()
+						listDom.show()
+						viewDom.hide()
+						editDom.hide()
+						break;
+				}
+			}
+			
+			function readDir(path){
+				let listDom = $('#list').find('ul')
+				let itemTemplate = $('#item')
+				
+				$.when(
+					$.post(dirScanApi, {path: path}),
+					$.post(fileScanApi, {path: path}),
+				).done((resA, resB) => {
+					let dirs = []
+					let files = []
+					try { dirs = Array.isArray(resA[0]) ? resA[0] : JSON.parse(resA[0] || '[]') } catch (e) { console.error('dir json parse fail', resA[0], e) }
+					try { files = Array.isArray(resB[0]) ? resB[0] : JSON.parse(resB[0] || '[]') } catch (e) { console.error('file json parse fail', resB[0], e) }
+					
+					// clear
+					listDom.empty()
+					
+					// append dirs
+					dirs.forEach(dirEntry => {
+						const dirName = typeof dirEntry === 'string' ? dirEntry : (dirEntry?.name || '');
+						const dirSize = typeof dirEntry === 'string' ? null : dirEntry?.size_bytes;
+						if (!dirName) return;
+						let item = $(itemTemplate.html())
+						item[0].path = joinPath(path, dirName)
+						item[0].type = 'dir'
+						item[0].rel = dirName
+						item.find('span').eq(0).text(dirName)
+						item.find('span').eq(0).addClass('item-name dir')
+						item.find('span').eq(1).text(dirSize === null ? '-' : formatFolderSize(dirSize))
+						item.find('span').eq(0).dblclick(() => {
+							read(joinPath(path, dirName));
+						})
+						item.find('.item-check').on('change', updateSelectionUi);
+						item.on('dragover', (e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							item.css('outline', '2px dashed #1d4ed8');
+						});
+						item.on('dragleave', (e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							item.css('outline', '');
+						});
+						item.on('drop', (e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							item.css('outline', '');
+							drop(e.originalEvent.dataTransfer, item[0].path);
+						});
+						listDom.append(item)
+					})
+					
+					// append files
+					files.forEach(fileEntry => {
+						const fileName = typeof fileEntry === 'string' ? fileEntry : (fileEntry?.name || '')
+						const fileSize = typeof fileEntry === 'string' ? null : fileEntry?.size_bytes
+						if (!fileName) return
+						let item = $(itemTemplate.html())
+						item[0].path = joinPath(path, fileName)
+						item[0].type = 'file'
+						item[0].rel = fileName
+						item.find('span').eq(0).text(fileName)
+						item.find('span').eq(0).addClass('item-name file')
+						item.find('span').eq(1).text(fileSize === null ? '-' : formatFolderSize(fileSize))
+						item.find('span').eq(0).dblclick(() => {
+							read(joinPath(path, fileName));
+						})
+						item.find('.item-check').on('change', updateSelectionUi);
+						listDom.append(item)
+					})
+					updateSelectionUi()
+				}).fail((xhr) => {
+					listDom.empty()
+					updateSelectionUi()
+					console.warn('readDir fail', path, xhr?.status, xhr?.responseText || xhr?.statusText)
+				});
+			}
+			
+			function readFile(path){
+				let viewDom = $('#view').find('iframe')
+				const previewUrl = `${filePreviewApi}?path=${encodeURIComponent(path)}`;
+				if (/\.md$/i.test(path)) {
+					$.post(fileReadApi, { path: path })
+						.done((res) => {
+							const html = window.MarkdownPreview
+								? window.MarkdownPreview.renderToHtml(res ?? '')
+								: `<pre>${escapeHtml(res ?? '')}</pre>`;
+							viewDom[0].srcdoc = `<!doctype html><html><head><meta charset="utf-8"><style>
+								*{box-sizing:border-box}
+								body{font-family:Segoe UI,Noto Sans TC,sans-serif;line-height:1.6;color:#1f2a37;padding:14px;margin:0}
+								h1,h2,h3,h4,h5,h6{margin:0 0 10px;line-height:1.35}
+								p{margin:0 0 10px}
+								ul{margin:0 0 10px 0;padding-left:1.1em}
+								li{margin:2px 0 0}
+								pre{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;overflow:auto}
+								pre{margin:0 0 10px}
+								code{background:#f1f5f9;border-radius:6px;padding:1px 5px}
+								a{color:#1d4ed8}
+							</style></head><body>${html}</body></html>`;
+						})
+						.fail((xhr) => {
+							const msg = escapeHtml(xhr?.responseText || `${xhr.status} ${xhr.statusText}`);
+							viewDom[0].srcdoc = `<pre style="color:#b91c1c;padding:12px">read failed: ${msg}</pre>`;
+						});
+					return;
+				}
+				if (/\.(gif|png|jpe?g|webp|bmp|svg|ico)$/i.test(path)) {
+					viewDom[0].srcdoc = `<!doctype html><html><head><meta charset="utf-8"><style>
+						html,body{margin:0;height:100%;background:#f8fafc}
+						.wrap{height:100%;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box}
+						img{max-width:100%;max-height:100%;object-fit:contain;border:1px solid #e2e8f0;border-radius:8px;background:#fff}
+					</style></head><body><div class="wrap"><img src="${previewUrl}" alt="preview"></div></body></html>`;
+					return;
+				}
+				if (/\.(mov|mp4|webm|ogg)$/i.test(path)) {
+					viewDom[0].srcdoc = `<!doctype html><html><head><meta charset="utf-8"><style>
+						html,body{margin:0;height:100%;background:#f8fafc}
+						.wrap{height:100%;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box}
+						video{max-width:100%;max-height:100%;background:#000;border:1px solid #e2e8f0;border-radius:8px}
+					</style></head><body><div class="wrap"><video controls preload="metadata" src="${previewUrl}"></video></div></body></html>`;
+					return;
+				}
+				viewDom.attr('srcdoc', '');
+				viewDom.attr('src', previewUrl);
+			}
+			
+			function edit(path){
+				let listDom = $('#list')
+				let viewDom = $('#view')
+				let editDom = $('#edit')
+				let codeDom = $('#edit').find('textarea')
+				
+				$.post(fileReadApi, {
+					path: path
+				}).done(() => {
+					editDom.show()
+					viewDom.hide()
+					listDom.hide()
+				}).done(res => {
+					codeDom.val(res)
+				})
+			}
+			
+			function save(path){
+				let editDom = $('#edit')
+				
+				if (!confirm(`確定要修改 "${path}" 的內容?`))
+					return;
+				
+				content = editDom.find('textarea').val()
+				
+				$.post(fileWriteApi, {
+					path: path, 
+					content: content
+				}).done(res => {
+					read(currentPath)
+				})
+			}
+			
+			function create(path, type){
+				const isDir = type === 'dir';
+				const baseName = isDir ? 'new-folder' : 'new-file';
+				const nameInput = prompt(`請輸入${isDir ? '資料夾' : '文件'}名稱（留空使用預設）`, baseName);
+				if (nameInput === null) return;
+				const name = (nameInput || '').trim();
+				if (name) {
+					const url = isDir ? dirCreateApi : fileCreateApi;
+					$.post(url, { dir: path, name: name })
+						.done(() => read(currentPath))
+						.fail(xhr => alert(xhr?.responseText || `${xhr.status} ${xhr.statusText}`));
+					return;
+				}
+				createWithDefaultName(path, type, baseName);
+			}
+			function createWithDefaultName(path, type, baseName){
+				const isDir = type === 'dir';
+				const url = isDir ? dirCreateApi : fileCreateApi;
+				const tryCreate = (idx) => {
+					const name = idx <= 1 ? baseName : `${baseName}(${idx})`;
+					$.post(url, { dir: path, name: name })
+						.done(() => read(currentPath))
+						.fail(xhr => {
+							if (xhr?.status === 409 && idx < 999) {
+								tryCreate(idx + 1);
+								return;
+							}
+							alert(xhr?.responseText || `${xhr.status} ${xhr.statusText}`);
+						});
+				};
+				tryCreate(1);
+			}
+			
+			function rename(path, type){
+				let name = prompt(`要將 "${path}" 取名為什麼名子?`)
+				if (!name) return;
+				
+				switch(type){
+					case 'dir':
+						$.post(dirRenameApi, {path: path, name: name})
+						 .done(() => read(currentPath) )
+						break;
+					case 'file':
+						$.post(fileRenameApi, {path: path, name: name})
+						 .done(() => read(currentPath) )
+						break;
+				}
+			}
+			
+			function remove(path, type){
+				let agree = confirm(`確定要刪除 "${path}" 嗎?`)
+				if (!agree) return;
+				
+				switch(type){
+					case 'dir':
+						$.post(dirDeleteApi, {path: path})
+						 .done(() => read(currentPath) )
+						break;
+					case 'file':
+						$.post(fileDeleteApi, {path: path})
+						 .done(() => read(currentPath) )
+				}
+			}
+
+			async function download(path){
+				try{
+					const selected = selectedRows();
+					if (selected.length > 0) {
+						await downloadSelectedRows(selected);
+						return;
+					}
+					let type = await $.post(typeApi, {path: path})
+					switch(type){
+						case 'dir':
+							await api('download_dir', { path: path })
+							break;
+						case 'file':
+							await api('download_file', { path: path })
+							break;
+					}
+				}catch(err){
+					console.error('download failed', err);
+				}
+			}
+			async function downloadSelectedRows(rows){
+				if (!rows.length) return;
+				if (rows.length === 1) {
+					const one = rows[0];
+					if (one.type === 'file') {
+						await api('download_file', { path: one.path });
+						return;
+					}
+					if (one.type === 'dir') {
+						await api('download_dir', { path: one.path });
+						return;
+					}
+				}
+				const rels = rows.map(x => x.rel).filter(Boolean);
+				if (!rels.length) return;
+				await api('download_items', { base: currentPath, items: JSON.stringify(rels) });
+			}
+
+			function openDiff(path){
+				window.location.href = pageUrl('diff.html', { base: path, fresh: '1' });
+			}
+			
+			async function drop(dataTransfer, targetPath = currentPath){
+				const snapshot = snapshotDroppedData(dataTransfer);
+				let agree = confirm(`確定要上傳檔案嗎?`)
+				if (!agree) return;
+
+				let result = await collectDroppedFiles(snapshot, targetPath)
+				let files = result.files
+				let dirs = result.dirs
+				if (!files.length) {
+					alert('未取得可上傳的檔案');
+					return;
+				}
+				
+				const uploadBatchSize = 10;
+				const uploadBatchBytes = 8 * 1024 * 1024;
+				const batches = [];
+				let pending = [];
+				let pendingBytes = 0;
+				for (let i = 0; i < files.length; i++) {
+					const f = files[i];
+					const sz = Number(f?.size || 0);
+					const nextCount = pending.length + 1;
+					const nextBytes = pendingBytes + sz;
+					if (pending.length > 0 && (nextCount > uploadBatchSize || nextBytes > uploadBatchBytes)) {
+						batches.push(pending);
+						pending = [];
+						pendingBytes = 0;
+					}
+					pending.push(i);
+					pendingBytes += sz;
+				}
+				if (pending.length > 0) batches.push(pending);
+
+				let savedTotal = 0;
+				for (let bi = 0; bi < batches.length; bi++) {
+					const idxs = batches[bi];
+					const batchFiles = idxs.map(i => files[i]);
+					const batchDirs = idxs.map(i => dirs[i]);
+					const formData = new FormData();
+					batchFiles.forEach(file => formData.append('files[]', file));
+					batchDirs.forEach(path => formData.append('dirs[]', path));
+					batchFiles.forEach(file => formData.append('mtimes[]', String(file.lastModified || 0)));
+					const batchLabel = `batch ${bi + 1}, files ${batchFiles.length}`;
+					try {
+						const res = await $.ajax({
+							type: 'POST',
+							url: fileUploadsApi,
+							data: formData,
+							processData: false,
+							contentType: false,
+						});
+						const payload = (typeof res === 'string')
+							? (() => { try { return JSON.parse(res); } catch (_) { return { raw: res }; } })()
+							: (res || {});
+						console.log('upload result:', payload);
+						const saved = Number(payload.saved ?? (Array.isArray(payload.files) ? payload.files.length : 0));
+						if (saved < batchFiles.length) {
+							const errMsg = Array.isArray(payload.errors) && payload.errors.length
+								? payload.errors.map(e => `${e.name || '#'+e.index}: ${e.error}`).join('\n')
+								: `upload api returned ${saved}/${batchFiles.length} saved files`;
+							alert(`上傳失敗\n${batchLabel}\n${errMsg}`);
+							return;
+						}
+						savedTotal += saved;
+					} catch (xhr) {
+						alert(`上傳失敗: ${batchLabel}\n${xhr?.status || ''} ${xhr?.responseText || xhr?.statusText || ''}`);
+						return;
+					}
+				}
+				console.log('upload saved total:', savedTotal);
+				read(currentPath);
+			}
+
+			async function readAllDirectoryEntries(reader){
+				let out = [];
+				while (true){
+					const batch = await new Promise((resolve) => reader.readEntries(resolve));
+					if (!batch || batch.length === 0) break;
+					out = out.concat(batch);
+				}
+				return out;
+			}
+
+			async function collectFromEntry(entry, dir = "") {
+				let files = []
+				let dirs = []
+				if (entry.isFile) {
+					const file = await new Promise((resolve) => entry.file(resolve));
+					files.push(file);
+					dirs.push(dir);
+					return { files, dirs };
+				}
+				if (entry.isDirectory) {
+					const subDir = `${dir}/${entry.name}`;
+					const reader = entry.createReader();
+					const children = await readAllDirectoryEntries(reader);
+					for (const child of children){
+						const result = await collectFromEntry(child, subDir);
+						files = files.concat(result.files);
+						dirs = dirs.concat(result.dirs);
+					}
+				}
+				return { files, dirs };
+			}
+
+			function snapshotDroppedData(dataTransfer){
+				const roots = [];
+				const items = dataTransfer?.items || [];
+				for (let i = 0; i < items.length; i++){
+					const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+					if (entry) roots.push(entry);
+				}
+				const files = Array.from(dataTransfer?.files || []);
+				return { roots, files };
+			}
+
+			async function collectDroppedFiles(snapshot, targetPath){
+				let files = [];
+				let dirs = [];
+				if (snapshot.roots.length > 0){
+					for (const entry of snapshot.roots){
+						const result = await collectFromEntry(entry, targetPath);
+						files = files.concat(result.files);
+						dirs = dirs.concat(result.dirs);
+					}
+					return { files, dirs };
+				}
+				return { files, dirs };
+			}
+			
+		</script>
+	</body>
+</html>
+
+
+

@@ -1,0 +1,42 @@
+﻿{
+    "sectionName":  "Transfer API",
+    "initScript":  "await ManagerApi.ready();\nconst workspaceRoot = (await utils.postForm(ManagerApi.url(\u0027get_root\u0027), {})).trim().replace(/\\/$/, \u0027\u0027);\nconst managerDir = new URL(window.SHV_MANAGER_URL).pathname.replace(/\\/$/, \u0027\u0027).split(\u0027/\u0027).pop();\nconst baseDir = workspaceRoot + \u0027/\u0027 + managerDir + \u0027/.temp\u0027;\nreturn {\n  baseDir,\n  transferDirName: \u0027transfer-box\u0027,\n  transferInnerFileName: \u0027inner.txt\u0027,\n  createDirUrl: ManagerApi.url(\u0027create_dir\u0027),\n  deleteDirUrl: ManagerApi.url(\u0027delete_dir\u0027),\n  scanDirUrl: ManagerApi.url(\u0027scan_dir\u0027),\n  scanFileUrl: ManagerApi.url(\u0027scan_file\u0027),\n  createFileUrl: ManagerApi.url(\u0027create_file\u0027),\n  writeFileUrl: ManagerApi.url(\u0027write_file\u0027),\n  readFileUrl: ManagerApi.url(\u0027read_file\u0027),\n  uploadFilesUrl: ManagerApi.url(\u0027upload_files\u0027),\n  message: \u0027init done: \u0027 + baseDir\n};",
+    "finallyScript":  "try { await utils.postForm(deleteDirUrl, { path: baseDir + \u0027/\u0027 + transferDirName }); } catch (_) {}\nreturn { message: \u0027cleanup done\u0027 };",
+    "tests":  [
+                  {
+                      "id":  "create",
+                      "name":  "create dir",
+                      "scriptText":  "try { await utils.postForm(deleteDirUrl, { path: baseDir + \u0027/\u0027 + transferDirName }); } catch (_) {}\nconst text = await utils.postForm(createDirUrl, { dir: baseDir, name: transferDirName });\nconst m = text.match(/\\[(.+?)\\/\\]/);\nassert(m \u0026\u0026 m[1], \u0027create: parse fail\u0027);\nconst dirs = JSON.parse((await utils.postForm(scanDirUrl, { path: baseDir })) || \u0027[]\u0027);\nassert(Array.isArray(dirs), \u0027create: scan dir not array\u0027);\nconst names = dirs.map(x =\u003e x.name);\nassert(names.includes(transferDirName), \u0027create: dir missing\u0027);\nreturn { transferDirPath: m[1], message: \u0027created=\u0027 + m[1] };"
+                  },
+                  {
+                      "id":  "upload_drag",
+                      "name":  "upload drag",
+                      "scriptText":  "const dragFiles = Array.isArray(selectedUploadDragFiles) ? selectedUploadDragFiles : [];\nconst dragDirs = Array.isArray(selectedUploadDragDirs) ? selectedUploadDragDirs : [];\nif (!dragFiles.length) return { uploadedDragFiles: [], message: \u0027uploaded drag files=0\u0027 };\nconst dirsParam = dragDirs.map((d) =\u003e {\n  const rel = String(d || \u0027\u0027).replace(/^\\/+/, \u0027\u0027);\n  return rel ? `${transferDirPath}/${rel}` : transferDirPath;\n});\nconst expected = dragFiles.map((f, i) =\u003e `${dirsParam[i]}/${f.name}`);\nconst resp = await utils.postMultipart(uploadFilesUrl, dragFiles, dirsParam);\nconst data = JSON.parse(resp || \u0027{}\u0027);\nassert(Array.isArray(data.files), \u0027upload_drag: response files not array\u0027);\nassert(data.files.length === expected.length, \u0027upload_drag: files count mismatch\u0027);\nfor (let i = 0; i \u003c expected.length; i++) {\n  assert(data.files[i] === expected[i], `upload_drag: path mismatch @${i}`);\n}\nreturn { uploadedDragFiles: data.files, message: \u0027uploaded drag files=\u0027 + data.files.length };"
+                  },
+                  {
+                      "id":  "upload_file",
+                      "name":  "upload file",
+                      "scriptText":  "const filesInput = Array.isArray(selectedUploadFiles) ? selectedUploadFiles : [];\nif (!filesInput.length) return { uploadedFiles: [], message: \u0027uploaded files=0\u0027 };\nconst dirsParam = filesInput.map(() =\u003e transferDirPath);\nconst expected = filesInput.map((f) =\u003e `${transferDirPath}/${f.name}`);\nconst resp = await utils.postMultipart(uploadFilesUrl, filesInput, dirsParam);\nconst data = JSON.parse(resp || \u0027{}\u0027);\nassert(Array.isArray(data.files), \u0027upload_file: response files not array\u0027);\nassert(data.files.length === expected.length, \u0027upload_file: files count mismatch\u0027);\nfor (let i = 0; i \u003c expected.length; i++) {\n  assert(data.files[i] === expected[i], `upload_file: path mismatch @${i}`);\n}\nreturn { uploadedFiles: data.files, message: \u0027uploaded files=\u0027 + data.files.length };"
+                  },
+                  {
+                      "id":  "upload_folder",
+                      "name":  "upload folder",
+                      "scriptText":  "const folderFiles = Array.isArray(selectedUploadFolderFiles) ? selectedUploadFolderFiles : [];\nif (!folderFiles.length) return { uploadedFolderFiles: [], message: \u0027uploaded folder files=0\u0027 };\nconst dirname = (p) =\u003e { const i = String(p || \u0027\u0027).lastIndexOf(\u0027/\u0027); return i \u003e= 0 ? p.slice(0, i) : \u0027\u0027; };\nconst dirsParam = folderFiles.map((f) =\u003e {\n  const relDir = dirname(f.webkitRelativePath || \u0027\u0027);\n  return relDir ? `${transferDirPath}/${relDir}` : transferDirPath;\n});\nconst expected = folderFiles.map((f, i) =\u003e `${dirsParam[i]}/${f.name}`);\nconst resp = await utils.postMultipart(uploadFilesUrl, folderFiles, dirsParam);\nconst data = JSON.parse(resp || \u0027{}\u0027);\nassert(Array.isArray(data.files), \u0027upload_folder: response files not array\u0027);\nassert(data.files.length === expected.length, \u0027upload_folder: files count mismatch\u0027);\nfor (let i = 0; i \u003c expected.length; i++) {\n  assert(data.files[i] === expected[i], `upload_folder: path mismatch @${i}`);\n}\nreturn { uploadedFolderFiles: data.files, message: \u0027uploaded folder files=\u0027 + data.files.length };"
+                  },
+                  {
+                      "id":  "create_inner_file",
+                      "name":  "create inner file",
+                      "scriptText":  "const text = await utils.postForm(createFileUrl, { dir: transferDirPath, name: transferInnerFileName });\nconst m = text.match(/\\[(.+?)\\]/);\nassert(m \u0026\u0026 m[1], \u0027create_inner_file: parse fail\u0027);\nawait utils.postForm(writeFileUrl, { path: m[1], content: \u0027hello inner file\u0027 });\nconst readText = await utils.postForm(readFileUrl, { path: m[1] });\nassert(readText.includes(\u0027hello inner file\u0027), \u0027create_inner_file: readback mismatch\u0027);\nconst files = JSON.parse((await utils.postForm(scanFileUrl, { path: transferDirPath })) || \u0027[]\u0027);\nassert(Array.isArray(files), \u0027create_inner_file: scan file not array\u0027);\nconst names = files.map(x =\u003e x.name);\nassert(names.includes(transferInnerFileName), \u0027create_inner_file: file missing\u0027);\nreturn { innerFilePath: m[1], message: \u0027created+written=\u0027 + transferInnerFileName };"
+                  },
+                  {
+                      "id":  "download_file",
+                      "name":  "download file",
+                      "scriptText":  "const fileName = await utils.downloadByPost(ManagerApi.url(\u0027download_file\u0027), { path: innerFilePath }, transferInnerFileName);\nreturn { message: \u0027download_file=\u0027 + fileName };"
+                  },
+                  {
+                      "id":  "download_dir",
+                      "name":  "download dir",
+                      "scriptText":  "const fileName = await utils.downloadByPost(ManagerApi.url(\u0027download_dir\u0027), { path: transferDirPath }, transferDirName + \u0027.zip\u0027);\nreturn { message: \u0027download_dir=\u0027 + fileName };"
+                  }
+              ]
+}

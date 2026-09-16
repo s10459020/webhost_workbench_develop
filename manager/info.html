@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>PHP Info</title>
+  <script src="js/server_config.js?v=20260514a"></script>
+  <script src="js/api.js?v=20260514a"></script>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --card: #ffffff;
+      --line: #d8e0ef;
+      --text: #1f2a37;
+      --muted: #5c697d;
+      --accent: #1f6feb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Noto Sans TC", sans-serif;
+      color: var(--text);
+      background: linear-gradient(160deg, #eff5ff, #f8f3eb);
+    }
+    .top-nav{
+      position: sticky;
+      top: 0;
+      z-index: 9999;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--line);
+      padding: 12px 14px;
+    }
+    .home-banner{
+      display: block;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, #eef5ff, #f8fbff);
+      color: var(--text);
+      font-size: 30px;
+      text-decoration: none;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+    .wrap {
+      width: min(1080px, 94%);
+      margin: 18px auto 28px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    h2 { margin: 0 0 10px; font-size: 18px; }
+    ul { margin: 0; padding-left: 18px; }
+    li { margin: 6px 0; word-break: break-all; }
+    .kv {
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr);
+      gap: 8px;
+      margin: 6px 0;
+    }
+    .k { color: var(--muted); }
+    .muted { color: var(--muted); }
+    .exts {
+      max-height: 260px;
+      overflow: auto;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      background: #fbfdff;
+      margin-top: 8px;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+    @media (max-width: 700px) {
+      .kv {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="top-nav">
+    <a class="home-banner" href="index.html">PHP Info</a>
+  </div>
+  <main class="wrap">
+    <div id="status" class="muted">loading...</div>
+    <section class="grid" id="cards" style="display:none;">
+      <article class="card">
+        <h2>PHP</h2>
+        <div class="kv"><div class="k">version</div><div id="php_version"></div></div>
+        <div class="kv"><div class="k">sapi</div><div id="php_sapi"></div></div>
+        <div class="kv"><div class="k">os</div><div id="php_os"></div></div>
+        <div class="kv"><div class="k">binary</div><div id="php_binary"></div></div>
+      </article>
+      <article class="card">
+        <h2>Server</h2>
+        <div class="kv"><div class="k">software</div><div id="sv_software"></div></div>
+        <div class="kv"><div class="k">name</div><div id="sv_name"></div></div>
+        <div class="kv"><div class="k">addr</div><div id="sv_addr"></div></div>
+        <div class="kv"><div class="k">port</div><div id="sv_port"></div></div>
+        <div class="kv"><div class="k">doc root</div><div id="sv_root"></div></div>
+        <div class="kv"><div class="k">workers</div><div id="sv_workers"></div></div>
+      </article>
+      <article class="card">
+        <h2>Limits</h2>
+        <ul>
+          <li>upload_max_filesize: <span id="lm_upload"></span></li>
+          <li>post_max_size: <span id="lm_post"></span></li>
+          <li>max_file_uploads: <span id="lm_files"></span></li>
+          <li>memory_limit: <span id="lm_mem"></span></li>
+          <li>max_execution_time: <span id="lm_exec"></span></li>
+          <li>max_input_time: <span id="lm_input"></span></li>
+        </ul>
+      </article>
+      <article class="card">
+        <h2>Workspace / Extensions</h2>
+        <div class="kv"><div class="k">workspace</div><div id="ws_root"></div></div>
+        <div class="kv"><div class="k">extensions</div><div id="ext_count"></div></div>
+        <div class="exts" id="ext_list"></div>
+      </article>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    function set(id, v) { $(id).textContent = v ?? ''; }
+    ManagerApi.ready()
+      .then(() => ManagerApi.get('get_php_info'))
+      .then((text) => JSON.parse(text))
+      .then((d) => {
+        set('php_version', d.php?.version);
+        set('php_sapi', d.php?.sapi);
+        set('php_os', d.php?.os);
+        set('php_binary', d.php?.binary);
+        set('sv_software', d.server?.software);
+        set('sv_name', d.server?.name);
+        set('sv_addr', d.server?.addr);
+        set('sv_port', d.server?.port);
+        set('sv_root', d.server?.document_root);
+        set('sv_workers', d.server?.workers);
+        set('lm_upload', d.limits?.upload_max_filesize);
+        set('lm_post', d.limits?.post_max_size);
+        set('lm_files', d.limits?.max_file_uploads);
+        set('lm_mem', d.limits?.memory_limit);
+        set('lm_exec', d.limits?.max_execution_time);
+        set('lm_input', d.limits?.max_input_time);
+        set('ws_root', d.workspace_root);
+        set('ext_count', d.loaded_extensions_count);
+        set('ext_list', (d.loaded_extensions || []).join('\n'));
+        $('cards').style.display = '';
+        $('status').textContent = '';
+      })
+      .catch((e) => {
+        $('status').textContent = 'load fail: ' + e.message;
+      });
+  </script>
+</body>
+</html>
